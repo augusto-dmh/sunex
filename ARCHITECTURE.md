@@ -48,7 +48,7 @@ scheduler (períodos aquisitivos, deadline reminders, outbox pruning).
 |---|---|---|---|
 | **Shared** | Shared kernel: Brazilian identifiers (CPF, CNPJ, CBO), date ranges, the clock and the business `Calendar` interface, the access-control primitives (principal, capability, decision, the policy function), the approval engine, audit conventions, the integration outbox, webhooks and CSV exports | `Authorizer`, `ReachResolver` (interface), `ApprovalEngine`, `ApprovalSubjectHandler` (interface), `Outbox`, value objects | the framework only |
 | **Organization** | Companies (employers, by CNPJ) and establishments, org units and their effective-dated tree, positions with CBO codes, holidays (implementing the `Calendar`) | `CompanyDirectory`, `OrgTree` (as of a date), `PositionDirectory` | Shared |
-| **People** | Persons (by CPF), employments (matrícula per company), **bitemporal employment versions**, eSocial identifiers and admission readiness, reach resolution (manager chain and org-unit reach as of a date) | `EmploymentWriter`, `EmploymentReader` (as of / known at), `ReachResolver` implementation, `EmploymentVersionRecorded` event | Organization, Shared |
+| **People** | Persons (by CPF), employments (matrícula per company), **bitemporal employment versions**, eSocial identifiers and admission readiness, reach resolution (manager chain and org-unit reach as of a date) | `EmploymentWriter`, `EmploymentReader` (as of / known at), `EmploymentRegistry` (admit: find or register the person by CPF, create the employment and its first version; terminate), `AdmissionReadiness` (the checklist), `ReachResolver` implementation, `EmploymentVersionRecorded` event | Organization, Shared |
 | **Movements** | Movement requests (admission, transfer, promotion, salary, schedule, manager change, termination), their approval flows and segregation of duties, application to employment versions | `RequestMovement`, `MovementApproved` event | People, Organization, Shared |
 | **Absence** | Períodos aquisitivos, the férias ledger, férias requests, faltas and afastamentos, the CLT rules engine | `VacationBalance`, `DraftVacationRequest`, `SubmitVacationRequest`, absence events | People, Organization, Shared |
 | **Agents** | Agent registry (owner, sponsor, mode, scopes), agent principals, the tool gateway, per-call audit, the `AgentRuntime` port, MCP tools, the two v1 agents and their knowledge base | Tool classes shared by in-app agents and the MCP server | Absence, Movements, People, Organization, Shared |
@@ -66,6 +66,10 @@ Rules that the architecture tests enforce:
    (read-only, query builder). Writes always go through the owning context's actions.
 5. Controllers, MCP tools and jobs are thin: they build input data, call one action or contract,
    and shape the output. Business rules live in `app/Domain`.
+
+`App\Models\User` (the starter kit's `users`) is identity code outside the contexts: any context may
+reference a user by id, and Shared's `HumanPrincipal` wraps it; no context adds Eloquent
+relationships to it, and the link between a person and a user is read through People's contracts.
 
 Inside a context the layout is the same everywhere:
 

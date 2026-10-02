@@ -103,7 +103,7 @@ scaffold); Redis and Horizon are a later operations row, not a design dependency
 | Convention | Rule |
 |---|---|
 | Keys | ULID primary keys (`$table->ulid('id')->primary()`), ULID foreign keys |
-| Company ownership | Company-owned tables carry a non-null `company_id`; composite indexes start with it |
+| Company ownership | Company-owned root tables carry a non-null `company_id` with a foreign key (copied from the employment where there is one, and checked by the action); composite indexes start with it. Child rows reached only through such a parent (`employment_versions`, `org_unit_versions`, `position_versions`, `approval_steps`, `vacation_request_periods`, `leave_ledger_entries`, `webhook_deliveries`) inherit it and sit on the schema test's allow-list. Writers check that every referenced position, org unit, establishment and parent org unit belongs to the same company, a tested invariant; a manager may work for another company of the group ([ADR-0011](../adr/0011-multi-company-single-installation.md)) |
 | Business dates | `date` in the employer's calendar (config `sunex.business_timezone`, default `America/Sao_Paulo`) |
 | Date ranges | Inclusive in the domain (`DateRange::of('2026-07-06', '2026-08-04')`), stored as PostgreSQL `daterange` half-open `[start, end + 1)`; an open end is an unbounded upper bound. Rulebook convention C-01 |
 | Recorded time | `timestamptz`, taken from an injected `Clock` once per command |
@@ -187,14 +187,21 @@ CREATE TABLE employment_versions (
     CONSTRAINT valid_period_not_empty CHECK (NOT isempty(valid_period)),
     CONSTRAINT recorded_period_starts CHECK (NOT lower_inf(recorded_period)),
     CONSTRAINT recorded_period_not_empty CHECK (NOT isempty(recorded_period)),
+    CONSTRAINT open_bounds_are_unbounded CHECK (
+        upper(recorded_period) <> 'infinity' AND upper(valid_period) <> 'infinity'),
     CONSTRAINT manager_is_not_self CHECK (manager_employment_id IS DISTINCT FROM employment_id)
 );
 CREATE INDEX employment_versions_current ON employment_versions
     USING gist (employment_id, valid_period) WHERE upper_inf(recorded_period);
+-- reach walks the tree downward (§12.2)
+CREATE INDEX employment_versions_current_by_manager ON employment_versions
+    USING gist (manager_employment_id, valid_period) WHERE upper_inf(recorded_period);
+CREATE INDEX employment_versions_current_by_org_unit ON employment_versions
+    USING gist (org_unit_id, valid_period) WHERE upper_inf(recorded_period);
 ```
 
 A trigger makes the table append-only: `DELETE` raises; `UPDATE` raises unless the only change is
-closing an open `recorded_period` (upper bound from infinity to a timestamp strictly greater than
+closing an open `recorded_period` (upper bound from unbounded to a timestamp strictly greater than
 its lower bound). Together with the
 exclusion constraint this gives the guarantee of the invariant: for each employment, date and
 moment of knowledge there is at most one row, and history is never rewritten.
@@ -215,12 +222,16 @@ interface EmploymentReader
 }
 ```
 
-The SQL behind `versionOn` is `valid_period @> :on::date AND recorded_period @> :knownAt::timestamptz`
-(the casts matter: an untyped parameter is parsed as a range literal and fails). The
-current-belief partial index serves the common case (`knownAt = now`). List screens join a
-`current_employment_versions` view (current belief, valid today) instead of loading timelines.
+`versionOn` filters `valid_period @> :on::date` and, for current belief (`knownAt = null`),
+`upper_inf(recorded_period)`, which the partial index serves; an explicit instant uses
+`recorded_period @> :knownAt::timestamptz` (the casts matter: an untyped parameter is parsed as a
+range literal and fails). Open bounds are always unbounded (`tstzrange(:t, NULL)`,
+`daterange(:d, NULL)`), never `'infinity'`, for which `upper_inf` is false; a check constraint
+enforces it. List screens call a set-returning function `current_employment_versions(:on date)`
+with today in the business time zone, rather than a view on `current_date`, which would follow the
+session's time zone.
 
-### 7.4 Writing: change, correction, rescission
+### 7.4 Writing: change, correction, rescission, termination
 
 All writes go through `People\Contracts\EmploymentWriter`, called by Movements when an approval
 completes, and by HR corrections. One write is one transaction:
@@ -234,18 +245,19 @@ completes, and by HR corrections. One write is one transaction:
 3. Load the current-belief timeline.
 4. A pure `TimelinePlanner` (no I/O) returns a plan: rows to close and rows to insert.
 5. Close: `recorded_period = tstzrange(lower(recorded_period), :recordedAt)` on each closed row.
-6. Insert the new rows with `recorded_period = [recordedAt, ∞)`.
+6. Insert the new rows with `recorded_period = [recordedAt, unbounded)`.
 7. Validate the result (manager chain without cycles as of each affected date; references valid
    as of the effective date), dispatch `EmploymentVersionRecorded` (in-transaction listeners write
    the audit entry and the outbox message), commit.
 
-The planner handles three operations:
+The planner handles four operations:
 
 | Operation | Input | Plan |
 |---|---|---|
 | **Change** effective D | attribute delta, reason | Split the version valid on D at D: close it, re-insert its part before D unchanged and its part from D with the delta applied. Later versions (future-dated) are re-asserted with **forward propagation**: an attribute in the delta is overwritten in a later version only if that version still holds the value being replaced; values that were deliberately changed later are kept |
 | **Correction** of version V | corrected attributes, reason | Close V and insert a row with the same `valid_period`, the corrected attributes, `reason_code = correction` and `supersedes_version_id = V` |
 | **Rescission** of version V | reason | Close V and re-assert the previous version with its valid period extended over V's range (`reason_code = rescission`) |
+| **Termination** effective D | reason code | Close the version valid on D and re-insert it with `valid_period` ending on D and `reason_code = termination`, leaving no open version; rejected while future-dated versions exist after D (HR rescinds them first). The same transaction sets `employments.termination_date` and `termination_reason_code` |
 
 Worked example (salary in R$; "now" in the recorded column is the moment of each write):
 
@@ -407,11 +419,11 @@ in test datasets.
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `acquisition_periods` (períodos aquisitivos) | `employment_id`, `previous_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (running, completed, lost, paused, superseded), `lost_reason` (art133_ii, art133_iii, art133_iv), `paused_days`, `entitlement_days` (set when the PA completes) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)`; unique `previous_id` |
-| `absence_records` | `employment_id`, `kind` (falta, afastamento, ferias), `period daterange`, `esocial_reason_code` (Tabela 18; 15 for férias; null for faltas), `counts_as_falta` (bool), `justified_by_employer` (bool), `illness_episode_id` (nullable), `document_ref` (nullable), `source_type`, `source_id`, `active` (bool) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&) WHERE (active)`: one person cannot be in two absences on the same day |
-| `illness_episodes` | `employment_id`, `reason_code` (01 or 03), `employer_days_used` (0–15), `inss_from` (nullable), `last_spell_end` | one open episode per employment and reason |
+| `acquisition_periods` (períodos aquisitivos) | `company_id`, `employment_id`, `previous_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (running, completed, lost, paused, superseded), `lost_reason` (art133_ii, art133_iii, art133_iv), `paused_days`, `entitlement_days` (set when the PA completes) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)`; unique `previous_id` |
+| `absence_records` | `company_id`, `employment_id`, `kind` (falta, afastamento, ferias), `period daterange`, `esocial_reason_code` (Tabela 18; 15 for férias; null for faltas), `counts_as_falta` (bool), `justified_by_employer` (bool), `illness_episode_id` (nullable), `document_ref` (nullable), `source_type`, `source_id`, `active` (bool) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&) WHERE (active)`: one person cannot be in two absences on the same day |
+| `illness_episodes` | `company_id`, `employment_id`, `reason_code` (01 or 03), `employer_days_used` (0–15), `inss_from` (nullable), `last_spell_end` | one open episode per employment and reason |
 | `leave_type_rules` | `esocial_reason_code`, `duration_days`, `funding` (employer, inss, employer_reimbursed), `valid_period daterange`, `condition` (nullable, e.g. the 2029 fiscal target), `requires_empresa_cidada` | exclusion constraint on `(esocial_reason_code, valid_period)` |
-| `vacation_requests` | `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `abono_requested_by_user_id`, `split_consent_at`, `split_consent_by_user_id`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date`, `notice_acknowledged_at` | |
+| `vacation_requests` | `company_id`, `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `abono_requested_by_user_id`, `split_consent_at`, `split_consent_by_user_id`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date`, `notice_acknowledged_at` | |
 | `vacation_request_periods` | `vacation_request_id`, `period daterange`, `days`, `truncated_at` (nullable) | up to three per request |
 | `leave_ledger_entries` | `acquisition_period_id`, `kind` (entitlement, enjoyment, abono, adjustment, reversal), `days` (signed), `source_type`, `source_id`, `recorded_at`, `recorded_by` | append-only; balance = sum; every ledger write locks its `acquisition_periods` row `FOR UPDATE` and checks balance and feasibility again after the lock, and request status changes are guarded updates, so two approvals cannot overspend one PA |
 

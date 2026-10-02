@@ -97,7 +97,8 @@ The design:
   attempt a `DELETE` and an `UPDATE` of an attribute and expect the trigger to fail.
 - Table-driven unit tests for `TimelinePlanner` cover change in the middle, change before a
   future-dated version (with and without propagation), correction of a past version, rescission
-  of a future change, and two changes on the same day.
+  of a future change, two changes on the same day, and termination, including its rejection
+  while a future-dated version exists.
 - An as-of test travels in time: record, correct, then query at a `knownAt` before and after the
   correction and expect the old and the new belief.
 - An architecture test forbids `update()` and `delete()` calls on `EmploymentVersion` outside the

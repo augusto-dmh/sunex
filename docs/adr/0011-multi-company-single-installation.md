@@ -75,7 +75,8 @@ The design:
 ### Confirmation
 
 - Every company-owned table has a non-null `company_id` with a foreign key; a schema test lists
-  tables without it and compares them to an allow-list (global tables such as `persons`).
+  tables without it and compares them to an allow-list (global tables such as `persons`, and child
+  tables owned through their parent).
 - A feature test seeds two companies and, for each list screen, export and agent tool, asserts that
   an HR analyst of company A never receives a row of company B, including the person data of
   someone employed by both.
