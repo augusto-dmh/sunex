@@ -46,11 +46,11 @@ scheduler (períodos aquisitivos, deadline reminders, outbox pruning).
 
 | Context | Owns | Public surface (`Contracts`, events) | May depend on |
 |---|---|---|---|
-| **Shared** | Shared kernel: Brazilian identifiers (CPF, CNPJ, CBO), date ranges and the clock, the access-control primitives (principal, capability, decision, the policy function), the approval engine, audit conventions, the integration outbox, webhooks and CSV exports | `Authorizer`, `ReachResolver` (interface), `ApprovalEngine`, `Outbox`, value objects | the framework only |
-| **Organization** | Companies (employers, by CNPJ) and establishments, org units and their effective-dated tree, positions with CBO codes | `CompanyDirectory`, `OrgTree` (as of a date), `PositionDirectory` | Shared |
+| **Shared** | Shared kernel: Brazilian identifiers (CPF, CNPJ, CBO), date ranges, the clock and the business `Calendar` interface, the access-control primitives (principal, capability, decision, the policy function), the approval engine, audit conventions, the integration outbox, webhooks and CSV exports | `Authorizer`, `ReachResolver` (interface), `ApprovalEngine`, `Outbox`, value objects | the framework only |
+| **Organization** | Companies (employers, by CNPJ) and establishments, org units and their effective-dated tree, positions with CBO codes, holidays (implementing the `Calendar`) | `CompanyDirectory`, `OrgTree` (as of a date), `PositionDirectory` | Shared |
 | **People** | Persons (by CPF), employments (matrícula per company), **bitemporal employment versions**, eSocial identifiers and admission readiness, reach resolution (manager chain and org-unit reach as of a date) | `EmploymentWriter`, `EmploymentReader` (as of / known at), `ReachResolver` implementation, `EmploymentVersionRecorded` event | Organization, Shared |
 | **Movements** | Movement requests (admission, transfer, promotion, salary, schedule, manager change, termination), their approval flows and segregation of duties, application to employment versions | `RequestMovement`, `MovementApproved` event | People, Organization, Shared |
-| **Absence** | Períodos aquisitivos, the férias ledger, férias requests, faltas and afastamentos, the CLT rules engine, holiday calendars | `VacationBalance`, `DraftVacationRequest`, `SubmitVacationRequest`, absence events | People, Organization, Shared |
+| **Absence** | Períodos aquisitivos, the férias ledger, férias requests, faltas and afastamentos, the CLT rules engine | `VacationBalance`, `DraftVacationRequest`, `SubmitVacationRequest`, absence events | People, Organization, Shared |
 | **Agents** | Agent registry (owner, sponsor, mode, scopes), agent principals, the tool gateway, per-call audit, the `AgentRuntime` port, MCP tools, the two v1 agents and their knowledge base | Tool classes shared by in-app agents and the MCP server | Absence, Movements, People, Organization, Shared |
 
 Rules that the architecture tests enforce:
@@ -101,7 +101,7 @@ is effective-dated plus the audit log
 
 Every read and write is decided by `Shared\Access\Authorizer::decide(principal, capability,
 subject, asOf)`. Roles grant capabilities; each grant carries a **reach** (self, direct reports,
-manager chain, org unit, company) that is evaluated **as of a date** from employment versions; and
+manager chain, org unit, company, all companies) that is evaluated **as of a date** from employment versions; and
 **field groups** decide which attributes are visible, so masked fields never leave the server.
 Laravel policies, Inertia props, exports and the agent tool gateway all call the same function
 ([ADR-0006](docs/adr/0006-permission-model-roles-reach-field-groups.md)).
@@ -110,8 +110,9 @@ Laravel policies, Inertia props, exports and the agent tool gateway all call the
 
 An agent is a registered principal, never a shared service account. It has an accountable owner,
 a human sponsor, a mode (on behalf of the invoking user, or autonomous within the sponsor's
-rights) and scopes. Its effective rights are the intersection of its scopes and the rights of the
-human it acts for, so an agent never sees or does what its sponsor could not. In-app agents and
+rights) and scopes. Its effective rights are the intersection of its scopes, the rights of the
+human it acts for and the rights of its sponsor, so an agent never sees or does what its sponsor
+(or the user who invoked it) could not. In-app agents and
 external MCP clients use the **same tool classes** through one gateway, which writes an audit row
 for every tool call inside the same database transaction as the change it caused. In v1 no agent
 changes data without a human approval

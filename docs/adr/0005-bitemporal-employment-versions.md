@@ -58,14 +58,16 @@ The design:
   `EXCLUDE USING gist (employment_id WITH =, valid_period WITH &&, recorded_period WITH &&)`.
   No two rows of one employment overlap in both times, so an as-of query cannot return two rows.
 - Append-only trigger: `DELETE` is rejected; `UPDATE` is allowed only to close an open
-  `recorded_period`, once, and may not touch any other column.
-- Writes: a command captures `recordedAt` once from an injected clock, locks the employment row
-  (`SELECT … FOR UPDATE`), and asks a pure `TimelinePlanner` for `{rows to close, rows to insert}`
+  `recorded_period`, once, with an upper bound strictly greater than its lower bound, and may not
+  touch any other column. A `CHECK (NOT isempty(recorded_period))` backs it, because an empty
+  range overlaps nothing and would slip past the exclusion constraint.
+- Writes: a command locks the employment row (`SELECT … FOR UPDATE`), then captures `recordedAt`
+  once from an injected clock (after the lock, so it is later than every row it closes), and asks a pure `TimelinePlanner` for `{rows to close, rows to insert}`
   for a **change**, a **correction** or a **rescission**. All closes and inserts share the same
   `recordedAt`, so recorded ranges abut exactly. Inserting a change before future-dated versions
   propagates the changed attributes forward only into later versions whose value still equals the
   value being replaced; deliberate later changes are kept.
-- As-of read: `valid_period @> :date AND recorded_period @> :knownAt`; "known now" is the common
+- As-of read: `valid_period @> :date::date AND recorded_period @> :knownAt::timestamptz`; "known now" is the common
   case and gets a partial index on `upper_inf(recorded_period)`.
 
 ### Consequences
@@ -83,7 +85,9 @@ The design:
 - Bad, because Laravel's schema builder has no range types or exclusion constraints; migrations
   use raw DDL and a custom cast maps ranges to a `DateRange` value object.
 - Bad, because the recorded time comes from the application clock: a skewed server clock could
-  produce overlapping recorded ranges. That fails safe: the constraint rejects the transaction.
+  close a row at or before its own start. That fails safe: PostgreSQL rejects an inverted range, and
+  the emptiness check and the trigger reject an empty one, so the write fails instead of erasing a
+  belief.
 - Neutral, because other entities answer only "what was true on D"; "what did we believe" for them
   comes from the audit log, which is enough while no external system acts on them.
 

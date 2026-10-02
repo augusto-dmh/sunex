@@ -128,11 +128,11 @@ objects](https://www.workday.com/content/dam/web/en-us/documents/datasheets/orga
 | `org_unit_versions` | `org_unit_id`, `name`, `parent_id` (nullable), `valid_period daterange` | `EXCLUDE USING gist (org_unit_id WITH =, valid_period WITH &&)`; no cycle as of any date (checked in the action with a recursive query under a company-level advisory lock) |
 | `positions` | `company_id`, `code`, `status` (open, frozen, closed) | unique `(company_id, code)` |
 | `position_versions` | `position_id`, `title`, `cbo_code` (6 digits), `org_unit_id`, `valid_period daterange` | exclusion constraint as above |
-| `holidays` | `company_id` (nullable for national), `establishment_id` (nullable), `date`, `name`, `scope` (national, state, municipal, company) | unique `(scope, coalesce(establishment_id), date)` |
+| `holidays` | `scope` (national, state, municipal, company, establishment), `company_id`, `state`, `city_ibge_code`, `establishment_id` (each nullable, filled per scope), `date`, `name` | `UNIQUE NULLS NOT DISTINCT (scope, company_id, state, city_ibge_code, establishment_id, date)` |
 
 Contracts: `OrgTree::subtree(OrgUnitId, Date $asOf)`, `OrgTree::pathToRoot(...)`,
-`PositionDirectory::find(PositionId, Date $asOf)`, `HolidayCalendar::for(EstablishmentId)`
-(rulebook C-04: holidays and rest days are injected, never hard-coded; national holidays from
+`PositionDirectory::find(PositionId, Date $asOf)`, and the implementation of `Shared\Time\Calendar`
+per establishment (holidays, weekly rest day, business days; rulebook C-04: holidays and rest days are injected, never hard-coded; national holidays from
 Lei 662/1949 art. 1 are seeded, the others are configuration).
 
 v1 does not enforce headcount per position (a position may have several incumbents); a warning is
@@ -185,6 +185,7 @@ CREATE TABLE employment_versions (
         employment_id WITH =, valid_period WITH &&, recorded_period WITH &&),
     CONSTRAINT valid_period_not_empty CHECK (NOT isempty(valid_period)),
     CONSTRAINT recorded_period_starts CHECK (NOT lower_inf(recorded_period)),
+    CONSTRAINT recorded_period_not_empty CHECK (NOT isempty(recorded_period)),
     CONSTRAINT manager_is_not_self CHECK (manager_employment_id IS DISTINCT FROM employment_id)
 );
 CREATE INDEX employment_versions_current ON employment_versions
@@ -192,7 +193,8 @@ CREATE INDEX employment_versions_current ON employment_versions
 ```
 
 A trigger makes the table append-only: `DELETE` raises; `UPDATE` raises unless the only change is
-closing an open `recorded_period` (upper bound from infinity to a timestamp). Together with the
+closing an open `recorded_period` (upper bound from infinity to a timestamp strictly greater than
+its lower bound). Together with the
 exclusion constraint this gives the guarantee of the invariant: for each employment, date and
 moment of knowledge there is at most one row, and history is never rewritten.
 
@@ -212,7 +214,8 @@ interface EmploymentReader
 }
 ```
 
-The SQL behind `versionOn` is `valid_period @> :on AND recorded_period @> :knownAt`. The
+The SQL behind `versionOn` is `valid_period @> :on::date AND recorded_period @> :knownAt::timestamptz`
+(the casts matter: an untyped parameter is parsed as a range literal and fails). The
 current-belief partial index serves the common case (`knownAt = now`). List screens join a
 `current_employment_versions` view (current belief, valid today) instead of loading timelines.
 
@@ -221,8 +224,9 @@ current-belief partial index serves the common case (`knownAt = now`). List scre
 All writes go through `People\Contracts\EmploymentWriter`, called by Movements when an approval
 completes, and by HR corrections. One write is one transaction:
 
-1. Capture `recordedAt = clock->now()` once.
-2. `SELECT … FROM employments WHERE id = ? FOR UPDATE` serializes writers per employment.
+1. `SELECT … FROM employments WHERE id = ? FOR UPDATE` serializes writers per employment.
+2. Only then capture `recordedAt = clock->now()`, once; reading the clock before the lock would
+   let a writer that waited close a row with a timestamp older than the row's own start.
 3. Load the current-belief timeline.
 4. A pure `TimelinePlanner` (no I/O) returns a plan: rows to close and rows to insert.
 5. Close: `recorded_period = tstzrange(lower(recorded_period), :recordedAt)` on each closed row.
@@ -252,9 +256,13 @@ After step 4, `versionOn(2026-03-15, knownAt: 2026-04-10)` still answers 5,500: 
 when, for instance, payroll closed March. This is the case bitemporality exists for
 ([Fowler, Bitemporal History](https://martinfowler.com/articles/bitemporal-history.html)).
 
-Concurrency and clocks: the row lock serializes writers; if two application servers' clocks
-disagree, an overlapping recorded period violates the exclusion constraint and the transaction
-fails instead of corrupting history. The planner is unit-tested with tables of timelines; the
+Concurrency and clocks: the row lock serializes writers, and the clock is read after the lock, so
+each write's `recordedAt` is later than every row it closes. If two application servers' clocks
+still disagree, closing a row at or before its own start would produce an inverted or empty range:
+PostgreSQL rejects the inverted one, and the `recorded_period_not_empty` check and the trigger
+reject the empty one, so the write fails instead of erasing a belief. The writer also asserts
+`recordedAt > lower(recorded_period)` of every row it closes and retries once after re-reading the
+clock. The planner is unit-tested with tables of timelines; the
 constraint and trigger are feature-tested against PostgreSQL.
 
 ### 7.5 eSocial identifiers and admission readiness
@@ -453,8 +461,8 @@ and surface in the UI as "calculated by Sunex; payroll is the system of record".
 
 An afastamento has a Tabela 18 motive code, a start date, an end date (open while ongoing; the
 end is the last day away, not the return day, E-09) and an optional document reference. **No
-diagnosis or CID code is stored** (LGPD: health data is the highest-risk category; research 06
-KQ3).
+diagnosis or CID code is stored** (LGPD art. 11 treats health data as sensitive; storing the fact and
+the dates is enough for eSocial and payroll).
 
 | Rule | v1 behaviour |
 |---|---|
@@ -485,10 +493,11 @@ Each context publishes through `Shared\Integration\Outbox::record(IntegrationEve
 transaction; the per-aggregate `sequence` comes from a counter row locked in the same transaction.
 The relay job claims unrelayed rows with `FOR UPDATE SKIP LOCKED`, creates one delivery per
 matching subscription and marks the message relayed. Delivery jobs POST and retry with exponential
-backoff for about three days; then the delivery is abandoned, the subscription is disabled after
-repeated abandonment, and company admins are notified
-([ADR-0010](../adr/0010-transactional-outbox-signed-webhooks.md); retry-then-disable is the common
-pattern at Deel, BambooHR and Personio, research 03).
+backoff for about three days; when a delivery exhausts that window the subscription is disabled,
+its pending deliveries are kept for replay when an admin re-enables it, and company admins are
+notified ([ADR-0010](../adr/0010-transactional-outbox-signed-webhooks.md); retry-then-disable is
+the common pattern, for example [Deel](https://developer.deel.com/docs/webhook-event-types) and
+[BambooHR](https://documentation.bamboohr.com/docs/webhooks)).
 
 ### 10.2 Event catalogue (v1)
 
@@ -626,9 +635,10 @@ the org tree. Consequences that the tests pin down:
   sees history through company reach.
 - "Who could see this person on date D" is answerable, because both grants and reach are dated.
 
-Implementation: People implements `ReachResolver` with recursive CTEs over the
-`current_employment_versions` view (manager chain, depth-limited) and over `org_unit_versions`
-(subtree as of the date). Results are memoized per request.
+Implementation: People implements `ReachResolver` with a recursive CTE over the current-belief
+versions valid on the date (`employment_versions WHERE upper_inf(recorded_period) AND valid_period
+@> :asOf::date`; manager chain, depth-limited), and gets org-unit subtrees from Organization's
+`OrgTree::subtree($unit, $asOf)` contract, never from its tables. Results are memoized per request.
 
 ### 12.3 Field groups
 
@@ -654,11 +664,13 @@ Inertia, a CSV or a tool result. Tests assert on the serialized JSON, not on the
 | `agent_runs` | `agent_id`, `acting_user_id`, `channel` (in_app, mcp), `invocation_id` (SDK) or `mcp_request_id`, `conversation_id`, `provider`, `model`, `status`, `steps`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `started_at`, `finished_at` |
 | `agent_tool_calls` | `agent_run_id`, `agent_id`, `acting_user_id`, `sponsor_user_id`, `tool`, `input_hash` (SHA-256 of canonical JSON), `input_redacted` (jsonb), `decision` (allowed, denied), `decision_reasons`, `subject_type`, `subject_id`, `approval_request_id`, `diff` (jsonb before/after), `result_status`, `created_at` |
 
-Effective rights: `scopes ∩ rights of the acting human, as of the date`. In `on_behalf_of` mode the
-acting human is the invoking user; in `autonomous` mode it is the sponsor, and v1 allows autonomous
-agents read scopes only. When a sponsor's employment is terminated, a listener suspends every agent
+Effective rights: `scopes ∩ rights of the human it acts for ∩ rights of the sponsor`, as of the
+date. In `on_behalf_of` mode the human it acts for is the invoking user; in `autonomous` mode it is
+the sponsor, and v1 allows autonomous agents read scopes only. Either way an agent never sees or
+does what its sponsor could not. When a sponsor's employment is terminated, a listener suspends every agent
 they sponsor until an admin assigns a new sponsor (the HR system owns the lifecycle the agent
-depends on; research 07 on sponsor transfer in Microsoft Entra Agent ID).
+depends on; compare sponsor transfer in
+[Microsoft Entra Agent ID](https://learn.microsoft.com/en-us/entra/agent-id/whats-new-agent-id)).
 
 ### 13.2 One toolset, one gateway
 
@@ -783,7 +795,8 @@ sequenceDiagram
 
 The agent never approves, never submits without the employee's confirmation, and every tool call
 (including the rejected first draft) is in `agent_tool_calls` with the approval id once it exists.
-This agent is the first cut if v1 runs late (brief, appetite).
+This agent is the first cut if v1 runs late (brief, appetite); §18 says what the demo path
+becomes without it.
 
 ## 15. Test strategy
 
@@ -850,9 +863,13 @@ enough to review in one sitting and marks which rows can run in parallel worktre
 | 10 | v1 agents | Policy and balance Q&A; férias drafting agent | golden-set evals recorded; demo path works with a faked model |
 | 11 | Demo and release | One-command setup with a seeded demo group, browser test of the demo path, docs pass, v1.0.0 | the brief's observable success criterion holds |
 
-**Appetite and circuit breaker.** v1 has 12 weeks of spare hours. Phase 4 is the risk: if it is not
-merged by the end of week 5, the férias drafting agent moves to v1.1; if the schedule still slips,
-the MCP server follows (brief, internal FAQ and appetite). Scope is cut, not the deadline.
+**Appetite and circuit breaker.** v1 has 12 weeks of spare hours. The bitemporal core is the risk:
+if the `employment-versions` row (the persistence half of Phase 4) is not merged by the end of
+week 5, the férias drafting agent moves to v1.1; if the schedule still slips, the MCP server
+follows (brief, internal FAQ and appetite). Scope is cut, not the deadline. Without the drafting
+agent, the demo path and its browser test start with the employee drafting the request in the UI;
+everything after the draft (confirmation, manager approval, signed event, audit trail) is the
+same, and the agent step is added back in v1.1.
 
 ## 19. Risks
 
@@ -875,7 +892,7 @@ the MCP server follows (brief, internal FAQ and appetite). Scope is cut, not the
 | Alphanumeric CNPJ check-digit algorithm | `shared-value-objects` | primary source from the Receita Federal |
 | Passport hook for the RFC 8707 audience | `mcp-server-oauth` | spike at the start of the row |
 | Embedding model and dimension for policy chunks | `policy-qa-agent` | an AD row in STATE.md when chosen |
-| Whether both Claude and ChatGPT connectors work with Passport and dynamic registration | `mcp-server-oauth` | untested in research (research 10, KQ2 gaps) |
+| Whether both Claude and ChatGPT connectors work with Passport and dynamic registration | `mcp-server-oauth` | not yet tested against real connectors |
 
 ## 21. References
 

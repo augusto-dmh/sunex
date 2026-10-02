@@ -47,7 +47,8 @@ make humans, in-app agents and MCP clients pass through the same door.
 The design:
 
 - `Shared\Access\Authorizer::decide(Principal $principal, Capability $capability, Subject $subject,
-  CarbonImmutable $asOf): Decision`, where `Decision` is `{allowed, reason, visibleFieldGroups}`.
+  ?Date $asOf = null): Decision`, where `Decision` is `{allowed, reasons, visible, matchedGrants}`
+  (`visible` is the set of visible field groups).
   `asOf` defaults to today.
 - `Capability` is a PHP enum (`employees.view`, `movements.request`, `movements.approve`,
   `absence.request`, `absence.approve`, `esocial.export`, `webhooks.manage`, `agents.manage`…).
@@ -61,7 +62,7 @@ The design:
   recursive query over versions valid on the date, org-unit subtree through Organization's
   `OrgTree`). Shared never depends on People.
 - Each grant lists **field groups**: `basic`, `contact`, `personal`, `identifiers`,
-  `compensation`, `absence_details`. One server-side serializer applies `visibleFieldGroups` to
+  `compensation`, `absence_details`. One server-side serializer applies `visible` to
   every output: Inertia props, exports and the agent tool gateway. Masked fields are absent, not
   hidden by the frontend.
 - Laravel policies are thin and delegate to the `Authorizer`. Agents and MCP clients reach the

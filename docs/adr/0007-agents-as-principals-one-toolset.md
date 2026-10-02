@@ -64,10 +64,11 @@ its rights are bounded by a human's, and the rule is enforced once.
 | `created_at`, `credential_rotated_at` | Lifecycle evidence |
 
 **Effective rights** = the agent's scopes ∩ the rights of the human it acts for (the invoking user
-in `on_behalf_of` mode, the sponsor in `autonomous` mode), evaluated **as of a date** by the same
+in `on_behalf_of` mode, the sponsor in `autonomous` mode) ∩ the sponsor's rights, so even an
+on-behalf-of call never exceeds what the sponsor could do; evaluated **as of a date** by the same
 `Authorizer::decide()` that humans use. Field-group masking applies to the intersection too.
 
-**Lifecycle tied to employment.** When a termination movement is applied to the sponsor's
+**Lifecycle tied to employment.** When a termination is recorded on the sponsor's
 employment, the Agents context listens to the domain event and suspends every agent that person
 sponsors until an administrator transfers sponsorship. No orphaned agents.
 
