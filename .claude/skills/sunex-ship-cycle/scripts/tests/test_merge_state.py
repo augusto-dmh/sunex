@@ -130,6 +130,41 @@ class MergeStateTest(unittest.TestCase):
         self.assertFalse((self.feature / "lessons-pending.jsonl").exists())
         self.assertTrue((self.feature / "lessons-recorded.jsonl").exists())
 
+    def store(self) -> list[dict]:
+        return json.loads((self.root / ".specs" / "lessons.json").read_text())["lessons"]
+
+    def write_pending(self, *entries: object) -> None:
+        (self.feature / "lessons-pending.jsonl").write_text("".join(json.dumps(e) + "\n" for e in entries))
+
+    def test_failed_replay_can_be_fixed_and_rerun_without_duplicates(self) -> None:
+        first = {"signal": "gate_fail", "source": "tests/A.php:3", "text": "Run the arch tests before pushing."}
+        second = {"signal": "nope", "source": "tests/B.php:9", "text": "Assert the boundary day explicitly."}
+        self.write_pending(first, second)
+        self.assertEqual(self.run_cmd()[0], 1)
+        self.assertEqual(len(self.store()), 1)
+        self.write_pending({**second, "signal": "ac_gap"})
+        code, _, err = self.run_cmd()
+        self.assertEqual(code, 0, err)
+        self.assertEqual([lesson["recurrence"] for lesson in self.store()], [1, 1])
+        self.assertEqual(len((self.feature / "lessons-recorded.jsonl").read_text().splitlines()), 2)
+
+    def test_penalties_are_replayed_through_lessons_py(self) -> None:
+        self.write_pending({"signal": "gate_fail", "source": "tests/A.php:3", "text": "Run the arch tests before pushing."})
+        self.run_cmd()
+        lesson_id = self.store()[0]["id"]
+        self.write_pending({"penalize": lesson_id})
+        code, _, err = self.run_cmd()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.store()[0]["harmful"], 1)
+
+    def test_malformed_pending_lines_name_the_file_and_line(self) -> None:
+        for line in ('"just text"', "{broken", '{"penalize": "7"}'):
+            with self.subTest(line=line):
+                (self.feature / "lessons-pending.jsonl").write_text(line + "\n")
+                code, _, err = self.run_cmd()
+                self.assertEqual(code, 1)
+                self.assertIn("lessons-pending.jsonl:1", err)
+
     def test_incomplete_lesson_fails_without_writing(self) -> None:
         (self.feature / "lessons-pending.jsonl").write_text(json.dumps({"signal": "gate_fail"}) + "\n")
         code, _, err = self.run_cmd()

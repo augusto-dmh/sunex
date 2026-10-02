@@ -83,4 +83,4 @@ Always release the lock on the way out, including on failure (`heartbeat.py unlo
 | Lock stale (exit 4) | Check the holder's heartbeat and PR; break it only when the holder is gone (`--break-stale`), and record it |
 | Driver session died mid-cycle | The coordinator (or the next session) sees a stale heartbeat, inspects the worktree, and adopts the cycle with `--cycle <slug>` |
 | Two cycles turn out to overlap after Design | The later one records the overlap in `context.md`, finishes its Design, and waits for the other to merge before Execute (rebase first) |
-| `merge_state.py` fails | Fix the cause (usually a malformed pending lesson), re-run; it is idempotent |
+| `merge_state.py` fails | Fix the cause (usually a malformed pending lesson; the error names its line) and re-run: lessons already replayed are not replayed again. If the run died between writing STATE.md and rewriting the cycle's files, `git restore` both first |

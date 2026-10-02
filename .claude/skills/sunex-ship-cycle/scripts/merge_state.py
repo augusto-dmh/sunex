@@ -10,7 +10,9 @@ nothing writes those shared files. Instead:
   STATE.md uses, with provisional IDs ``AD-PENDING-1``, ``AD-PENDING-2`` ...
   Other files of the cycle may refer to those IDs.
 - Lessons the Verifier distils go into ``.specs/features/<slug>/lessons-pending.jsonl``,
-  one JSON object per line: ``{"signal", "source", "text", "scope"?}``.
+  one JSON object per line: ``{"signal", "source", "text", "scope"?}``. A
+  demotion of a confirmed lesson that failed again is queued the same way as
+  ``{"penalize": "L-NNN"}`` instead of calling ``lessons.py penalize``.
 
 At merge time, while holding the merge lock and after rebasing on the latest
 ``main``, this script:
@@ -19,10 +21,15 @@ At merge time, while holding the merge lock and after rebasing on the latest
    order of first appearance, appends them to STATE.md's ``## Decisions``
    section (rows join an existing Markdown table; headings join as blocks), and
    rewrites every ``AD-PENDING-n`` in the cycle's files to its final number;
-2. replays each pending lesson through the tlc-spec-driven ``lessons.py add``
-   command, then renames the file to ``lessons-recorded.jsonl``.
+2. replays each pending line through the tlc-spec-driven ``lessons.py``
+   (``add`` or ``penalize``), in order. Each line that succeeds moves from the
+   pending file to ``lessons-recorded.jsonl``, so a failed replay can be fixed
+   and re-run without applying any line twice.
 
-Running it again is a no-op, so an interrupted landing can simply be re-run.
+Running it again after a complete run is a no-op. If a run is interrupted
+between writing STATE.md and rewriting the cycle's files, the decisions would
+be numbered twice on a re-run: ``git restore`` STATE.md and the feature folder
+first (nothing the landing writes is committed yet), then re-run.
 
 Usage:
   merge_state.py <slug> [--root .] [--dry-run]
@@ -42,6 +49,7 @@ from pathlib import Path
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PENDING_RE = re.compile(r"\bAD-PENDING-(\d+)\b")
+LESSON_ID_RE = re.compile(r"L-[0-9]+")
 FINAL_RE = re.compile(r"\bAD-(\d{3,})\b")
 SECTION_RE = re.compile(r"^## ")
 DECISIONS_HEADING_RE = re.compile(r"^## Decisions\b", re.IGNORECASE)
@@ -144,26 +152,57 @@ def land_decisions(root: Path, feature: Path, dry_run: bool) -> dict[str, str]:
     return mapping
 
 
+def read_pending(pending: Path) -> list[dict[str, str]]:
+    entries = []
+    for number, line in enumerate(pending.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{pending}:{number}: not valid JSON ({exc.msg})") from None
+        if not isinstance(entry, dict):
+            raise ValueError(f"{pending}:{number}: expected a JSON object")
+        if "penalize" in entry:
+            if not LESSON_ID_RE.fullmatch(str(entry["penalize"])):
+                raise ValueError(f"{pending}:{number}: penalize needs a lesson id like L-007")
+        else:
+            missing = [key for key in ("signal", "source", "text") if not entry.get(key)]
+            if missing:
+                raise ValueError(f"{pending}:{number} is missing {', '.join(missing)}")
+        entries.append(entry)
+    return entries
+
+
+def lessons_command(root: Path, lessons_script: Path, slug: str, entry: dict[str, str]) -> list[str]:
+    command = [sys.executable, str(lessons_script), "--root", str(root)]
+    if "penalize" in entry:
+        return command + ["penalize", "--id", entry["penalize"]]
+    command += ["add", "--feature", slug, "--signal", entry["signal"], "--source", entry["source"], "--text", entry["text"]]
+    if entry.get("scope"):
+        command += ["--scope", entry["scope"]]
+    return command
+
+
 def land_lessons(root: Path, feature: Path, slug: str, lessons_script: Path, dry_run: bool) -> int:
     pending = feature / "lessons-pending.jsonl"
     if not pending.is_file():
         return 0
-    entries = [json.loads(line) for line in pending.read_text(encoding="utf-8").splitlines() if line.strip()]
-    for number, entry in enumerate(entries, start=1):
-        missing = [key for key in ("signal", "source", "text") if not entry.get(key)]
-        if missing:
-            raise ValueError(f"{pending}:{number} is missing {', '.join(missing)}")
+    entries = read_pending(pending)
     if dry_run:
         return len(entries)
-    for entry in entries:
-        command = [sys.executable, str(lessons_script), "--root", str(root), "add", "--feature", slug,
-                   "--signal", entry["signal"], "--source", entry["source"], "--text", entry["text"]]
-        if entry.get("scope"):
-            command += ["--scope", entry["scope"]]
-        result = subprocess.run(command, capture_output=True, text=True)
+    recorded = feature / "lessons-recorded.jsonl"
+    for index, entry in enumerate(entries):
+        result = subprocess.run(lessons_command(root, lessons_script, slug, entry), capture_output=True, text=True)
         if result.returncode != 0:
-            raise RuntimeError(f"lessons.py add failed for {entry['source']}: {result.stderr.strip() or result.stdout.strip()}")
-    pending.rename(feature / "lessons-recorded.jsonl")
+            what = entry.get("penalize") or entry["source"]
+            raise RuntimeError(f"lessons.py failed for {what}: {result.stderr.strip() or result.stdout.strip()}")
+        # Move the line from pending to recorded at once, so a later failure
+        # and re-run never replays it (penalize is not idempotent).
+        with recorded.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        pending.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries[index + 1 :]), encoding="utf-8")
+    pending.unlink()
     return len(entries)
 
 
