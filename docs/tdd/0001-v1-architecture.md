@@ -718,6 +718,13 @@ per company with a `valid_period`.
 | HR admin | assigned | company | everything, including `access.manage`, `webhooks.manage`, `agents.manage`, `organization.manage`, `movements.correct` | all |
 | Auditor | assigned | company | read-only capabilities and `audit.view` | all, read-only |
 
+The complete v1 `Capability` enum: `employees.view`, `employment_history.view`,
+`organization.manage`, `movements.view`, `movements.request`, `movements.approve`*,
+`movements.correct`, `absence.view`, `absence.request`, `absence.record`, `absence.approve`*,
+`esocial.export`, `webhooks.manage`, `policies.manage`, `agents.use`, `agents.manage`,
+`access.manage`, `audit.view` (* human-only, `Capability::isHumanOnly()`). The Auditor holds the
+`*.view` capabilities and `audit.view`.
+
 Reach kinds: `self`, `direct_reports`, `manager_chain`, `org_unit` (subtree), `company`,
 `all_companies`. Reach is evaluated **as of a date** from current-belief employment versions and
 the org tree. Consequences that the tests pin down:
