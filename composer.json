@@ -1,13 +1,16 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/vue-starter-kit",
+    "name": "augusto-dmh/sunex",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "People management for Brazilian companies: dated employment history, CLT férias and afastamentos, and AI agents you can audit.",
     "keywords": [
         "laravel",
-        "framework"
+        "hr",
+        "people-management",
+        "clt",
+        "esocial"
     ],
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "require": {
         "php": "^8.4",
         "inertiajs/inertia-laravel": "^3.0",
