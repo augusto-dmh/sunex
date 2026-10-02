@@ -42,30 +42,21 @@ the transmitter; Sunex is the best-structured source of the facts it needs.
 Requirements: PHP 8.4 with the `pdo_pgsql` extension, Composer 2, Node 22+, Docker.
 
 ```bash
-# 1. PostgreSQL 17 with pgvector on a non-default host port
-docker run -d --name sunex-pg -p 54329:5432 \
-  -e POSTGRES_USER=sunex -e POSTGRES_PASSWORD=sunex -e POSTGRES_DB=sunex \
-  pgvector/pgvector:pg17
-
-# 2. Environment: point the app at that database
-cp .env.example .env
-#   DB_PORT=54329  DB_USERNAME=sunex  DB_PASSWORD=sunex
-
-# 3. Install, generate the key, migrate and build assets
+# 1. Install, create .env, start PostgreSQL 17 + pgvector (compose.yaml, host port 54329),
+#    generate the key, migrate and build assets
 composer setup
 
-# 4. Run the app, queue worker, logs and Vite together
+# 2. Run the app, queue worker, logs and Vite together
 composer dev        # http://localhost:8000
 ```
 
 Checks before a pull request:
 
 ```bash
-composer test       # config clear, lint check, type check, Pest
+composer check      # Pint, Larastan, Rector, Pest on PostgreSQL, frontend checks
 ```
 
-The first roadmap row (`postgres-platform`) replaces step 1 with a committed Compose file, and the
-demo row turns steps 1–3 into one command with a seeded demo company group.
+The demo row adds a seeded demo company group to the same setup command.
 
 ## Documentation
 

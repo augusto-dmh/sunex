@@ -36,11 +36,19 @@ Every roadmap row runs the same ship cycle ([ADR-0013](docs/adr/0013-delivery-pr
 A pull request is mergeable only when all of these pass locally and in CI:
 
 ```bash
-composer test         # lint check (Pint), type check (vue-tsc), Pest suite
+composer check        # runs every gate below, in order
 ```
 
-The quality-tooling work extends this with Larastan (level 8, aiming at 9), Rector, Pest
-architecture tests, a coverage gate and Pest browser tests. The CI workflow is the source of truth
+| Gate | Runs |
+|---|---|
+| `composer lint` | Pint in check mode (`composer lint:fix` applies it) |
+| `composer analyse` | Larastan at level 9, no baseline |
+| `composer refactor-check` | Rector dry run (`composer refactor` applies it) |
+| `composer test` | Pest: unit, feature and architecture suites on PostgreSQL |
+| `composer frontend-check` | Wayfinder generation, lint and format check, `vue-tsc`, production build |
+
+Each gate is also one CI job, and CI checks every commit message of a pull request. A coverage
+gate and Pest browser tests arrive with later roadmap rows. The CI workflow is the source of truth
 for the exact list.
 
 Rules that the gates cannot check:

@@ -67,7 +67,7 @@ Concretely:
 
 ### Confirmation
 
-- `vue-tsc --noEmit` runs in `composer test` and CI; a type error fails the build.
+- `vue-tsc --noEmit` runs in `composer frontend-check` and CI; a type error fails the build.
 - Feature tests assert on Inertia props (including the absence of masked fields).
 - Pest browser tests cover the v1 golden path (férias request from draft to approval).
 
