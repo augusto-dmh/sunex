@@ -59,7 +59,7 @@ Read `composer.json` (`scripts`) and `package.json` (`scripts`) for the exact ga
 - PHP: format check (Pint), static analysis (Larastan), refactor dry-run (Rector), tests (Pest, including architecture tests). A `composer` aggregate script that runs all of them, when present, is the gate of record.
 - Frontend: the type check (`vue-tsc`), the lint/format check, and the production build.
 
-Run the narrowest relevant subset while iterating and the full set before pushing. A docs-only or skill-only change runs `git diff --check`, the skill script tests (see `.claude/skills/README.md`) and any validator that covers the changed files. Report every gate you ran with its result, and any you could not run with the reason. Do not publish with a known failing gate.
+Run the narrowest relevant subset while iterating and the full set before pushing. A docs-only or skill-only change runs `git diff --check`, the frontend lint/format check (it formats Markdown outside ignored folders, tables included), the skill script tests (see `.claude/skills/README.md`) and any validator that covers the changed files. Report every gate you ran with its result, and any you could not run with the reason. Do not publish with a known failing gate.
 
 If a formatter rewrites files, re-stage them before committing so CI does not fail on formatting.
 
