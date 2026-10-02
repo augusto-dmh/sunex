@@ -49,8 +49,10 @@ accountable users. It is the source of facts payroll needs, never the transmitte
 - Experiência, aviso prévio, desligamento deadlines beyond recording the termination, the LGPD
   toolset, the NR-1 psychosocial-risk register (later Brazil pack).
 - Time clock, banco de horas, recruiting, SSO/SCIM, mobile app, SaaS sign-up.
+- eSocial categories other than 101 (employee) and 103 (apprentice): domestic, temporary,
+  intermittent and public-sector workers follow different rules.
 - Férias coletivas (art. 139–141), art. 133 I (rehire within 60 days), F-20 paternity linkage
-  (in force 2027-01-01).
+  (in force 2027-01-01), the Empresa Cidadã sharing and half-hours alternatives.
 - Agents that change data without a human approval, autonomous agents with write scopes.
 - pt-BR UI copy (a later roadmap row; v1 ships English copy behind translation keys).
 
@@ -120,8 +122,8 @@ objects](https://www.workday.com/content/dam/web/en-us/documents/datasheets/orga
 
 | Table | Columns (beyond id and timestamps) | Constraints |
 |---|---|---|
-| `companies` | `cnpj_root` (8 chars, the employer in eSocial), `legal_name`, `trade_name`, `status` | unique `cnpj_root` |
-| `establishments` | `company_id`, `cnpj` (14 chars, upper-case, numeric or alphanumeric), `name`, `city_ibge_code`, `state`, `weekly_rest_day` (ISO weekday, default 7) | unique `cnpj`; `left(cnpj, 8) = companies.cnpj_root` checked in the action |
+| `companies` | `cnpj_root` (8 chars, the employer in eSocial), `legal_name`, `trade_name`, `status`, `empresa_cidada` (bool, Lei 11.770 extensions) | unique `cnpj_root` |
+| `establishments` | `company_id`, `cnpj` (14 chars, upper-case, numeric or alphanumeric), `name`, `city_ibge_code`, `state`, `weekly_rest_day` (ISO weekday, default 7), `union_cnpj` (default `cnpjSindCategProf` for its employees) | unique `cnpj`; `left(cnpj, 8) = companies.cnpj_root` checked in the action |
 | `org_units` | `company_id`, `code`, `kind` (directorate, department, team) | unique `(company_id, code)` |
 | `org_unit_versions` | `org_unit_id`, `name`, `parent_id` (nullable), `valid_period daterange` | `EXCLUDE USING gist (org_unit_id WITH =, valid_period WITH &&)`; no cycle as of any date (checked in the action with a recursive query under a company-level advisory lock) |
 | `positions` | `company_id`, `code`, `status` (open, frozen, closed) | unique `(company_id, code)` |
@@ -257,27 +259,51 @@ constraint and trigger are feature-tested against PostgreSQL.
 
 ### 7.5 eSocial identifiers and admission readiness
 
-Sunex stores the source data of an S-2200 and checks it before the start date
-([leiaute S-1.3](https://www.gov.br/esocial/pt-br/documentacao-tecnica/leiautes-esocial-v-s-1-3-nt-07-2026-rev-24-09-2026);
-[S-2200 fields and deadline](https://documentacao.senior.com.br/gestao-de-pessoas-hcm/esocial/leiautes/nao-periodicos/s-2200.htm)).
+Sunex stores the source data of an S-2200 and checks it before the start date. The ready-gate
+list is the rulebook's rule **E-01**, taken field by field from the S-1.3 leiaute
+([leiautes S-1.3](https://www.gov.br/esocial/pt-br/documentacao-tecnica/leiautes-esocial-v-s-1-3-nt-07-2026-rev-24-09-2026)).
+v1 covers CLT employees under the RGPS with **eSocial category 101 (employee) or 103
+(apprentice)** only; other categories change the férias and eSocial rules and are out of scope.
 
-| Identifier or field | Where it lives | Validation | Status |
-|---|---|---|---|
-| CPF | `persons.cpf` | 11 digits, check digits, not all equal; CPF is the only worker key since eSocial 1.0 | verified (research 05/06) |
-| Matrícula | `employments.matricula` | ≤ 30 chars, unique per company | length **to verify** against the leiaute |
-| Categoria do trabalhador | `employments.esocial_category` | Tabela 01 code; v1 offers the CLT codes 101–106 | code list **to verify** against Tabela 01 |
-| CNPJ (employer, establishment) | `companies.cnpj_root`, `establishments.cnpj` | numeric check digits; the alphanumeric CNPJ announced by the Receita Federal for 2026 is accepted by the same value object | alphanumeric algorithm **to verify** against the primary source |
-| CBO | `position_versions.cbo_code` → snapshot on the version | 6 digits | verified (format) |
-| Salary and unit | version | amount > 0, unit from the leiaute's unit list | unit list **to verify** |
-| Weekly hours, schedule | version | 0 < hours ≤ 44 | 44 h ceiling **to verify** (CF art. 7 XIII) |
-| Contract type | version (`contract_type`, `contract_end_date`) | fixed-term requires an end date | |
-| Establishment | version | belongs to the employment's company | |
+| Field (leiaute tag) | Where it lives | Validation in Sunex |
+|---|---|---|
+| CPF (`cpfTrab`) | `persons.cpf` | 11 digits, check digits; the only worker key since eSocial 1.0 |
+| Name, sex, race/colour, education (`nmTrab`, `sexo`, `racaCor`, `grauInstr`) | `persons` | `racaCor` 6 ("not informed") is rejected for admissions from 2024-04-22; stored under a legal-obligation basis and visible only to HR (`personal` field group) |
+| Birth date, birth country, nationality (`dtNascto`, `paisNascto`, `paisNac`) | `persons` | country codes from Tabela 06; birth before admission |
+| Address in Brazil (`cep`, `codMunic`, `uf`, …) | `persons.address` | CEP with 8 digits, IBGE municipality code |
+| Matrícula (`matricula`) | `employments.matricula` | unique per company; must not start with "eSocial" |
+| Category (`codCateg`) | `employments.esocial_category` | 101 or 103 in v1 |
+| Admission data (`dtAdm`, `tpAdmissao`, `indAdmissao`, `tpRegJor`, `natAtividade`) | `employments` and the admission movement | values from the leiaute's lists |
+| Union (`cnpjSindCategProf`) | `establishments.union_cnpj`, overridable per employment | a valid 14-character CNPJ; mandatory |
+| Workplace (`localTrabGeral/nrInsc`) | version → establishment CNPJ | the establishment must exist (it is the employer's S-1005 table, kept by payroll) |
+| Job title and CBO (`nmCargo`, `CBOCargo`) | position version → snapshot on the version | CBO with 6 digits |
+| Salary (`vrSalFx`, `undSalFixo`) | version | amount > 0; unit 1–7 (hour, day, week, fortnight, month, task, not applicable) |
+| Contract (`tpContr`, `dtTerm`) | version (`contract_type`, `contract_end_date`) | fixed-term requires an end date |
+| Working hours (`qtdHrsSem`, `tpJornada`, `tmpParc`, `dscJorn`) | version | part-time ceilings (≤ 30 or ≤ 26 hours) for admissions from 2026-11-23, per NT 07/2026 |
+| CNPJ (employer root, establishment, union) | `Cnpj` value object | numeric check digits; the alphanumeric CNPJ announced by the Receita Federal for 2026 is accepted by the same value object (algorithm **to verify** against the primary source) |
 
 The **admission readiness checklist** is a pure function over a draft admission that returns the
-missing or invalid items. The S-2200 deadline is the day before the start date; an admission
-movement cannot be approved while the checklist has errors, and the HR dashboard lists admissions
-starting in the next 15 days with their state and deadline. Deadlines and their exceptions (S-2190
-pre-registration) follow the rulebook's E-rules (see [§11](#11-statutory-rules-and-the-rulebook)).
+missing or invalid items by tag. An admission movement cannot be approved while the checklist has
+errors, and the HR dashboard lists admissions starting in the next 15 days with their state and
+their S-2200 deadline: the day before work starts (rule E-02; with an S-2190 pre-registration, the
+15th of the next month).
+
+### 7.6 eSocial deadlines
+
+Payroll transmits, but HR needs to know when each fact must reach payroll. A pure
+`EsocialDeadlines` service computes the deadline of every outbound fact from the rulebook's
+E-rules, on a business-day calendar (Monday to Friday minus national holidays, with an override
+list; convention C-05). The direction of the shift is a per-event parameter, because the MOS moves
+deadlines in different directions:
+
+| Event | Deadline | Non-business last day |
+|---|---|---|
+| S-2200 (E-02) | the day before work starts | — |
+| S-2206 (E-03) | the 15th of the month after the change | moved **later** |
+| S-2230 (E-04) | by case: férias before the start; illness and accidents by the 15th of the next month or around day 16, per the MOS cases | moved **later** |
+| S-2299 (E-05) | 10 days after the termination, the termination day excluded | moved **earlier** |
+
+Each outbound message carries its computed `esocial_deadline`, and dashboards sort by it.
 
 ## 8. Movements and approvals
 
@@ -354,70 +380,96 @@ in test datasets.
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `acquisition_periods` (períodos aquisitivos) | `employment_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (accruing, acquired, lost, closed), `lost_reason` (art133_ii, art133_iii, art133_iv), `entitlement_days` (set when the PA ends) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)` |
-| `absence_records` | `employment_id`, `kind` (falta, afastamento, ferias), `period daterange`, `esocial_reason_code` (Tabela 18 for afastamentos; 15 for férias), `counts_as_falta` (bool), `justified_by_employer` (bool), `document_ref` (nullable), `source_type`, `source_id`, `active` (bool) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&) WHERE (active)` — one person cannot be in two absences on the same day |
+| `acquisition_periods` (períodos aquisitivos) | `employment_id`, `previous_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (running, completed, lost, paused), `lost_reason` (art133_ii, art133_iii, art133_iv), `paused_days`, `entitlement_days` (set when the PA completes) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)`; unique `previous_id` |
+| `absence_records` | `employment_id`, `kind` (falta, afastamento, ferias), `period daterange`, `esocial_reason_code` (Tabela 18; 15 for férias; null for faltas), `counts_as_falta` (bool), `justified_by_employer` (bool), `illness_episode_id` (nullable), `document_ref` (nullable), `source_type`, `source_id`, `active` (bool) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&) WHERE (active)`: one person cannot be in two absences on the same day |
+| `illness_episodes` | `employment_id`, `reason_code` (01 or 03), `employer_days_used` (0–15), `inss_from` (nullable), `last_spell_end` | one open episode per employment and reason |
+| `leave_type_rules` | `esocial_reason_code`, `duration_days`, `funding` (employer, inss, employer_reimbursed), `valid_period daterange`, `condition` (nullable, e.g. the 2029 fiscal target), `requires_empresa_cidada` | exclusion constraint on `(esocial_reason_code, valid_period)` |
 | `vacation_requests` | `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `split_consent_at`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date` | |
-| `vacation_request_periods` | `vacation_request_id`, `period daterange`, `days` | up to three per request |
+| `vacation_request_periods` | `vacation_request_id`, `period daterange`, `days`, `truncated_at` (nullable) | up to three per request |
 | `leave_ledger_entries` | `acquisition_period_id`, `kind` (entitlement, enjoyment, abono, adjustment, reversal), `days` (signed), `source_type`, `source_id`, `recorded_at`, `recorded_by` | append-only; balance = sum |
 
-The single `absence_records` table is deliberate: férias, afastamentos and faltas occupy the same
-calendar, so one exclusion constraint forbids every overlap. An afastamento recorded over approved
-future férias is rejected by the constraint and returned to HR as a conflict to resolve (cancel or
-move the férias first).
+Three design points come from the rulebook and change what earlier research assumed:
+
+1. **Períodos aquisitivos are a chain, not admission anniversaries** (C-03, F-10). Each PA starts
+   the day after the previous one ends; a loss under art. 133 starts a new PA on the return date;
+   military service (code 29) and, by configurable default, unpaid leave (code 21) **pause** the PA
+   and move its end by the days away. The rows are derived one from the other (`previous_id`),
+   never recomputed from `admission_date`, and the eSocial `perAquis` of a férias event comes
+   from them.
+2. **One table for every absence.** Férias, afastamentos and faltas occupy the same calendar and
+   eSocial forbids concurrent afastamentos (A-15), so one exclusion constraint forbids every
+   overlap. When a new afastamento must start inside approved férias (a birth during férias), the
+   application **truncates** the férias the day before, marks the period `truncated_at`, returns
+   the unused days to the ledger and emits the corrected S-2230-shaped events, all in one
+   transaction. Any other overlap is rejected and returned to HR as a conflict.
+3. **Leave durations are effective-dated rules**, not constants. Licença-paternidade is 5 days
+   paid by the employer and not reported to eSocial until 2026-12-31 (A-13); from 2027-01-01 it is
+   an S-2230 afastamento (codes 46–52) of 10 days funded by the INSS, 15 from 2028 and 20 from
+   2029 if the fiscal condition is met (A-14). Maternity is 120 days (A-08) with its extensions
+   (codes 18, 35, 43). The rule in force on the event date applies; the Empresa Cidadã extensions
+   need `companies.empresa_cidada`.
 
 ### 9.2 The rules engine
 
 `App\Domain\Absence\Rules` is pure PHP with no database access. Its inputs are value objects (the
-PA, the absences inside it, the requested periods, the abono, the consent, the calendar); its
-outputs are entitlement, balance and a list of violations with stable codes.
+PA chain, the absences inside it, the requested periods, the abono, the consent, the calendar);
+its outputs are entitlement, balance and a list of violations with stable codes.
 
 | Rule | v1 behaviour |
 |---|---|
-| F-01, C-02, C-03 | PAs are chained; each ends the day before the 12-month anniversary (Código Civil art. 132 §3); a leap PA has 366 days |
+| F-01, C-02, C-03 | PAs are chained; each ends the day before the 12-month anniversary of its own start (Código Civil art. 132 §3); a leap PA has 366 days |
 | F-02, F-03 | Entitlement 30/24/18/12 by unjustified absences (faltas) dated inside the PA; 33 or more returns 0 with `art130_over_32` and asks HR to confirm; absences are never deducted from the férias period |
 | F-04, F-05 | Only `absence_records` with `counts_as_falta = true` count; the art. 473 catalogue is the default configuration |
-| F-08, F-09, F-10 | Paid leave over 30 days, or INSS-paid days over 180 inside the PA, mark the PA lost; a new PA starts on the return date |
+| F-08, F-09, F-10 | Paid leave over 30 days, or INSS-paid days over 180 inside the PA (spells summed, afastamentos crossing a PA boundary split), mark the PA lost; a new PA starts on the return date |
 | F-11, F-15 | Requests must fall inside the PC; days after the PC end raise `ferias_em_dobro_risk`; a warning appears 60 days before the PC end when days are unscheduled |
 | F-12 | Up to three periods with recorded consent; one ≥ 14 days, the others ≥ 5; feasibility checked against periods already approved for the same PA |
 | F-13 | No period starts in the two days before a holiday or the employee's weekly rest day (per establishment) |
 | F-14 | Approval at least 30 days before each period starts; the approval date is the notice date |
 | F-16 | `payment_due_on = start − 2 days` is part of the férias event payload |
 | F-17 | Abono up to one third of the entitlement, requested at least 15 days before the PA ends; a late request needs HR consent |
+| A-01 to A-05 | The 15 employer-paid days belong to an **illness episode**: spells of the same cause within 60 days add up, so a relapse may move straight to the INSS (see §9.4) |
+| A-08 to A-14 | Family leave durations come from `leave_type_rules` as of the event date |
 
 Interpretations that the statute does not settle (33+ faltas, starting on the holiday itself,
-summing shorter paid leaves, the 180-day reading of "6 meses") are listed in the rulebook's
-interpretation section and surface in the UI as "calculated by Sunex; payroll is the system of
-record".
+summing shorter paid leaves, the 180-day reading of "6 meses", how unpaid leave affects the PA)
+are listed in the rulebook's interpretation section, are configurable where the rulebook says so,
+and surface in the UI as "calculated by Sunex; payroll is the system of record".
 
 ### 9.3 Férias flow
 
-1. The scheduler opens PAs from the admission date and closes them on their last day, writing the
-   entitlement to the ledger (`kind = entitlement`).
+1. The scheduler extends the PA chain: it completes a PA on its last day (writing the entitlement
+   to the ledger, `kind = entitlement`) and opens the next one.
 2. An employee, a manager for a report, or the drafting agent creates a **draft** request; the
    rules run on every edit and return violations.
 3. **Submit** opens an approval request (`manager_of_subject`).
 4. **Approve** (≥ 30 days before start, F-14) writes the `absence_records` rows, debits the ledger
    (enjoyment and abono), records the audit entry and the outbox message `vacation.scheduled`,
-   all in one transaction.
+   all in one transaction. Férias are themselves an S-2230 afastamento (code 15, with `perAquis`
+   from the PA chain), which eSocial accepts up to 60 days ahead (E-06).
 5. Cancelling an approved request reverses the ledger entries and deactivates the absence rows
-   (`vacation.cancelled`).
+   (`vacation.cancelled`); a truncation (§9.1) returns only the unused days.
 
 ### 9.4 Afastamentos
 
-An afastamento has a Tabela 18 motive code, a start date, an end date (open while ongoing) and an
-optional document reference. **No diagnosis or CID code is stored** (LGPD: health data is the
-highest-risk category; research 06 KQ3).
+An afastamento has a Tabela 18 motive code, a start date, an end date (open while ongoing; the
+end is the last day away, not the return day, E-09) and an optional document reference. **No
+diagnosis or CID code is stored** (LGPD: health data is the highest-risk category; research 06
+KQ3).
 
 | Rule | v1 behaviour |
 |---|---|
-| A-01 (15-day threshold) | For illness and work accidents the employer pays the first 15 days and the INSS pays from the 16th (rulebook C-06 counts day 1 as the start date). Sunex derives `employer_paid_days`, `inss_from` and a `crosses_15_day_threshold` flag |
-| Recurrence within 60 days | A new spell of the same cause starting within 60 days of the previous one's end continues the employer-paid count instead of starting a new 15 days (rulebook F-09 examples, Decreto 3.048 art. 75); HR links the spells explicitly |
-| F-04, F-09 interaction | INSS-paid days count toward the 180-day loss rule of the PA they fall in; an afastamento crossing a PA boundary is split |
-| S-2230 | `leave.started`, `leave.updated` and `leave.ended` messages carry the motive code and dates; deadlines per the rulebook's E-rules |
+| A-01, A-02 | For illness and accidents (codes 01 and 03) the employer pays the first 15 consecutive days and the INSS pays from the 16th (C-06: day 1 is the start date) |
+| A-03, A-04, A-05 | The illness form asks one question: **is this the same cause as an absence in the last 60 days?** A yes attaches the spell to the open `illness_episode`, whose `employer_days_used` counter decides how many employer days remain; a relapse after day 15 goes to the INSS from its first day. No diagnosis is needed to answer it |
+| E-07 | The same answer fills `infoMesmoMtv` on the S-2230-shaped event, mandatory from **2026-10-26** when a prior afastamento with the same code exists in the 60-day window |
+| E-08 | Changing a spell between codes 01 and 03 is a correction that carries the `infoRetif` origin |
+| A-07, F-09 | INSS-paid days are unpaid leave for the contract and count toward the 180-day loss rule of the PA they fall in |
+| A-08 to A-15 | Maternity, its extensions, miscarriage, adoption and paternity follow `leave_type_rules`; a birth during férias truncates the férias (§9.1) |
+| E-04 | `leave.started`, `leave.updated` and `leave.ended` carry the motive code, the dates and the computed deadline (§7.6) |
 
-Motive codes are a seeded table from Tabela 18 (15 = férias, 16 = licença remunerada and 29 =
-serviço militar are confirmed in the rulebook; the full list is imported when the rulebook's
-afastamento section is complete).
+Motive codes are a seeded table from Tabela 18 for the absences v1 models: 01, 03, 15, 16, 17,
+18, 19, 20, 21, 29, 35, 43, and 46–52 valid from 2027-01-01. Absences not listed in Tabela 18
+(faltas, art. 473 absences, the 5-day paternity leave before 2027) are recorded but never
+reported.
 
 ## 10. Outbound events: outbox, signed webhooks, CSV
 
@@ -446,7 +498,7 @@ pattern at Deel, BambooHR and Personio, research 03).
 | `employment.changed` | change applied (with `esocial_relevant` and the changed attributes) | S-2206 when relevant |
 | `employment.corrected` | correction recorded (old and new values, superseded version id) | retification is payroll's decision |
 | `employment.terminated` | termination applied | S-2299 |
-| `vacation.scheduled`, `vacation.cancelled` | férias approved or cancelled | S-2230, motive 15 |
+| `vacation.scheduled`, `vacation.updated`, `vacation.cancelled` | férias approved, truncated by another afastamento, or cancelled | S-2230, motive 15, with `perAquis` |
 | `leave.started`, `leave.updated`, `leave.ended` | afastamento recorded, changed, closed | S-2230 |
 
 Envelope (payload trimmed):
@@ -460,6 +512,7 @@ Envelope (payload trimmed):
   "aggregate": { "type": "employment", "id": "01JB…", "sequence": 7 },
   "occurred_at": "2026-04-02T13:05:11-03:00",
   "effective_date": "2026-03-01",
+  "esocial_deadline": "2026-04-15",
   "data": {
     "matricula": "000123",
     "cpf": "12345678909",
@@ -494,8 +547,8 @@ HR downloads CSV files per event family and date range. Rows are built from `out
 a file and the webhooks that carried the same events never disagree. Column names mirror the
 leiaute tags (for example `cpfTrab`, `matricula`, `codCateg`, `dtAdm`, `codCBO`, `vrSalFx`,
 `undSalFixo`, `qtdHrsSem`; `dtIniAfast`, `codMotAfast`, `dtTermAfast`; `dtDeslig`, `mtvDeslig`).
-The mapping lives in `docs/esocial/csv-columns.md` and every tag is **to verify** against the S-1.3
-leiaute before the export row ships. Exports require `esocial.export` and are audited.
+The mapping lives in `docs/esocial/csv-columns.md`, built from the leiaute fields the rulebook
+records (§4 of the rulebook), and is checked against the S-1.3 leiaute when the export row ships. Exports require `esocial.export` and are audited.
 
 ## 11. Statutory rules and the rulebook
 
@@ -508,10 +561,12 @@ interpretations section for the points the statute does not settle.
 
 Before any rule code ships, roadmap row `clt-rulebook` brings the rulebook into the repository as
 `docs/compliance/clt-rules.md` (public, with the Planalto and gov.br links), so every
-`// F-12` comment and every test dataset name points at a public document. Items marked
-**to verify** in this design (afastamento motive list, eSocial deadlines and CSV tags, the
-S-2206-relevant attribute list, the alphanumeric CNPJ algorithm) are resolved there; earlier
-research had flagged them as gaps (research 06, "Gaps" of KQ1 and KQ2).
+`// F-12` comment and every test dataset name points at a public document. The rulebook supersedes
+the earlier secondary-source research wherever they differ; the differences that shaped this
+design are the chained períodos aquisitivos (§9.1), the illness episode behind the 15-day
+threshold (§9.4), effective-dated leave durations from 2027 (§9.1) and deadlines that move in
+different directions (§7.6). Its 17 unverified items and interpretations stay flagged in the UI
+and configurable where it says so.
 
 Three safeguards from the brief's internal FAQ apply to every rule: it cites its article and rule
 id, it has a table-driven Pest dataset taken from the rulebook's example cases, and the UI labels
@@ -789,8 +844,8 @@ enough to review in one sitting and marks which rows can run in parallel worktre
 | 4 | People and bitemporal employment | Persons, employments, employment versions with constraints and trigger, timeline planner, `EmploymentWriter` and `EmploymentReader`, history screen ("effective on" and "known at") | the §7.4 worked example passes as a feature test |
 | 5 | Reach and field groups | Manager-chain and org-unit reach as of a date, derived roles, field groups and the `FieldMask` serializer | masking verified on serialized props; future-dated transfer case passes |
 | 6 | Approvals and movements | Approval engine with segregation of duties; movement framework and change types; admission with readiness checklist; termination | a salary change goes manager → HR and lands as a version; SoD constraints proven |
-| 7 | Outbound events | Outbox and relay, signed webhooks with retries and rotation, eSocial-shaped CSV | a test receiver verifies signatures; CSV equals the webhook payloads |
-| 8 | Absence | Rulebook in the repo; rules engine; PAs and ledger; férias requests and approval; faltas and afastamentos with the 15-day threshold | every rulebook example case is a passing dataset row |
+| 7 | Outbound events | eSocial deadline service; outbox and relay, signed webhooks with retries and rotation, eSocial-shaped CSV | a test receiver verifies signatures; CSV equals the webhook payloads; every rulebook deadline example passes |
+| 8 | Absence | Rulebook in the repo; rules engine; PA chain and ledger; férias requests and approval; faltas; afastamentos with illness episodes and the 15-day threshold; family leaves from effective-dated rules, including truncation of férias | every rulebook example case is a passing dataset row |
 | 9 | Agent platform | Registry, agent principal, tool gateway and audit, runtime seam on laravel/ai; MCP server with OAuth and the audience check | parity test passes; audit rolls back with a failed domain write |
 | 10 | v1 agents | Policy and balance Q&A; férias drafting agent | golden-set evals recorded; demo path works with a faked model |
 | 11 | Demo and release | One-command setup with a seeded demo group, browser test of the demo path, docs pass, v1.0.0 | the brief's observable success criterion holds |
@@ -814,10 +869,10 @@ the MCP server follows (brief, internal FAQ and appetite). Scope is cut, not the
 
 | Item | Owner row | Note |
 |---|---|---|
-| Afastamento motive list (Tabela 18), the A-rules and the S-2230 deadlines | `clt-rulebook` | the rulebook's afastamento section is in progress |
-| CSV column tags for S-2200, S-2206, S-2230, S-2299 and the S-2206-relevant attributes | `esocial-csv-export` | checked against the S-1.3 leiaute |
-| Alphanumeric CNPJ check-digit algorithm | `brazil-identifiers` | primary source from the Receita Federal |
-| Matrícula maximum length, Tabela 01 CLT codes | `brazil-identifiers` | leiaute S-2200 |
+| The rulebook's unverified items (no band above 32 faltas, "6 meses" as 180 days, unpaid leave and the PA, paternity from 2027 without regulation) | `clt-rulebook` | kept as flagged, configurable defaults |
+| eSocial obligation for the 2027 paternity codes 46–52 | `family-leaves` | the MOS predates them; re-check before 2027-01-01 |
+| CSV column tags for S-2200, S-2206, S-2230, S-2299 and the S-2206-relevant attributes | `esocial-csv-export` | from the S-1.3 leiaute fields listed in the rulebook |
+| Alphanumeric CNPJ check-digit algorithm | `shared-value-objects` | primary source from the Receita Federal |
 | Passport hook for the RFC 8707 audience | `mcp-server-oauth` | spike at the start of the row |
 | Embedding model and dimension for policy chunks | `policy-qa-agent` | an AD row in STATE.md when chosen |
 | Whether both Claude and ChatGPT connectors work with Passport and dynamic registration | `mcp-server-oauth` | untested in research (research 10, KQ2 gaps) |
@@ -828,7 +883,11 @@ the MCP server follows (brief, internal FAQ and appetite). Scope is cut, not the
 - Workday effective and entry dates, [unified.to guide](https://unified.to/blog/workday_api_integration_what_to_know_before_you_build)
 - Odoo 19 [`hr.version`](https://github.com/odoo/odoo/blob/master/addons/hr/models/hr_version.py)
 - eSocial [leiautes S-1.3 (NT 07/2026)](https://www.gov.br/esocial/pt-br/documentacao-tecnica/leiautes-esocial-v-s-1-3-nt-07-2026-rev-24-09-2026)
-- CLT, [consolidated text on Planalto](https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm)
+- CLT, [consolidated text on Planalto](https://www.planalto.gov.br/ccivil_03/decreto-lei/del5452.htm);
+  Lei 8.213/1991, [art. 60](https://www.planalto.gov.br/ccivil_03/leis/l8213cons.htm);
+  Decreto 3.048/1999, [art. 75](https://www.planalto.gov.br/ccivil_03/decreto/d3048.htm);
+  Lei 15.371/2026, [licença-paternidade](https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/lei/L15371.htm)
+- eSocial [Manual de Orientação S-1.3](https://www.gov.br/esocial/pt-br/documentacao-tecnica/manuais/mos-s-1-3-consolidada-ate-a-no-s-1-3-11-2026-retificada.pdf)
 - HiBob Engineering, [Event-driven reports in Payroll Hub](https://medium.com/hibob-engineering/event-driven-reports-in-payroll-hub-7491cf2dad0f)
 - Personio, [webhooks reference](https://developer.personio.de/reference/webhooks)
 - Laravel, [AI SDK](https://laravel.com/docs/13.x/ai-sdk) and [MCP](https://laravel.com/docs/13.x/mcp) documentation
