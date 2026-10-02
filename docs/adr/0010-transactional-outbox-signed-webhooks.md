@@ -72,12 +72,20 @@ Sunex-Event-Type: employment.changed
 Sunex-Signature: t=1791000000,v1=5257a869e7...
 ```
 
-where `v1 = hex(HMAC-SHA256(secret, "<t>.<raw body>"))`. Receivers should reject timestamps older
-than five minutes and deduplicate by event id. Delivery is at least once and ordering is not
-guaranteed; `sequence` lets a receiver detect a gap and fetch the missing event. Failures retry with
-exponential backoff for about three days; then the subscription is disabled and its administrators
-are notified. Secrets are encrypted at rest; rotation keeps the old secret valid for a seven-day
-grace period during which both signatures are sent (`v1=new,v1=old`).
+where `v1 = hex(HMAC-SHA256(secret, "<t>.<raw body>"))`, computed at every attempt over the stored
+body (the event id does not change). Receivers should reject a `t` more than five minutes away from
+their clock in either direction and deduplicate by event id. Delivery is at least once and ordering
+is not guaranteed; `sequence` lets a receiver detect a gap and fetch the missing event. Failures
+retry with exponential backoff for about three days; then the subscription is disabled and its
+administrators are notified. Secrets are encrypted at rest; a routine rotation keeps the old secret
+valid for a seven-day grace period during which both signatures are sent (`v1=new,v1=old`), and a
+rotation after a leak drops the old secret at once.
+
+**Egress.** The URL comes from a company-scoped administrator, not from the operator of the host,
+so it is untrusted: the host is resolved and vetted at save and at every delivery (no loopback,
+private, link-local, CGNAT, multicast or unique-local addresses), the connection goes to the vetted
+address, redirects are not followed, only port 443 is allowed, and administrators see the status
+code and a short sanitized excerpt of the response, never the raw body.
 
 **CSV.** Exports shaped like S-2200, S-2206, S-2230 and S-2299 are built from the same outbox
 messages, so a file and a webhook for the same fact carry the same values and the same event id.
@@ -104,8 +112,11 @@ window; exports needed beyond it are generated before pruning.
   exactly one; two concurrent relays never create duplicate deliveries.
 - A signature test vector (fixed secret, timestamp and body → expected hex) is shared by the
   delivery code and the receiver documentation.
-- Delivery tests with `Http::fake`: retries with backoff, disabling after the retry window, both
-  signatures during rotation.
+- Delivery tests with `Http::fake`: retries with backoff and a fresh `t` on each attempt,
+  disabling after the retry window, both signatures during a routine rotation and one after an
+  immediate rotation, refusal of every blocked address range and of a redirect to a private
+  address.
+- The verification snippet rejects a `t` five minutes in the future as well as in the past.
 - Export test: the CSV row for an event equals the webhook payload for the same event id.
 
 ## Pros and Cons of the Options

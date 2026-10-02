@@ -487,7 +487,14 @@ reported.
 |---|---|
 | `outbox_messages` | `id` (ULID, also the event id), `company_id`, `aggregate_type`, `aggregate_id`, `sequence` (per aggregate, gap-free), `event_type`, `schema_version`, `effective_date`, `occurred_at`, `payload` (jsonb), `relayed_at` |
 | `webhook_subscriptions` | `company_id`, `url` (https only), `event_types` (text[]), `secret` and `previous_secret` (encrypted casts), `previous_secret_expires_at`, `status` (active, disabled), `failure_count`, `disabled_at` |
-| `webhook_deliveries` | `subscription_id`, `outbox_message_id`, `attempt`, `status` (pending, delivered, failed, abandoned), `next_attempt_at`, `response_status`, `response_excerpt`, `delivered_at` |
+| `outbox_sequences` | `aggregate_type`, `aggregate_id` (primary key on both), `last_sequence` |
+| `webhook_deliveries` | `subscription_id`, `outbox_message_id`, `attempt` (tries so far), `status` (pending, delivered, failed, abandoned), `next_attempt_at`, `response_status`, `response_excerpt` (sanitized, short), `delivered_at` |
+
+Keys and indexes: `outbox_messages` is unique on `(aggregate_type, aggregate_id, sequence)`, with a
+partial index on `occurred_at WHERE relayed_at IS NULL` for the relay and an index on
+`(company_id, event_type, occurred_at)` for exports. `webhook_deliveries` holds one row per
+subscription and message, unique on `(subscription_id, outbox_message_id)`, with a partial index on
+`next_attempt_at WHERE status = 'pending'`.
 
 Each context publishes through `Shared\Integration\Outbox::record(IntegrationEvent)` inside its own
 transaction; the per-aggregate `sequence` comes from a counter row locked in the same transaction.
@@ -498,6 +505,14 @@ its pending deliveries are kept for replay when an admin re-enables it, and comp
 notified ([ADR-0010](../adr/0010-transactional-outbox-signed-webhooks.md); retry-then-disable is
 the common pattern, for example [Deel](https://developer.deel.com/docs/webhook-event-types) and
 [BambooHR](https://documentation.bamboohr.com/docs/webhooks)).
+
+**Outbound requests are not a window into the host.** The subscription URL is typed by a
+company-scoped HR admin, not by whoever runs the server, so delivery treats it as untrusted. The
+host is resolved and vetted when the subscription is saved and again at every delivery; loopback,
+private, link-local, CGNAT, multicast and IPv6 unique-local addresses are rejected, and the
+connection goes to the vetted address. Redirects are not followed, only port 443 is allowed, and
+timeouts are short. Admins see the response status and a short sanitized excerpt, never the raw
+body. Delivery tests cover each blocked range and a redirect to a private address.
 
 ### 10.2 Event catalogue (v1)
 
@@ -544,11 +559,15 @@ Sunex-Event-Type: employment.changed
 Sunex-Signature: t=1775145911,v1=5f2c…e9a1
 ```
 
-`v1 = hex(HMAC-SHA256(secret, "{t}.{raw body}"))`. Consumers recompute it over the raw body,
-compare in constant time, reject timestamps older than five minutes, and deduplicate by event id
-(delivery is at least once; order is not guaranteed; `sequence` lets a consumer detect gaps).
-During a secret rotation both signatures are sent (`v1=new,v1=old`) for seven days. `docs/events/`
-ships a verification snippet and a fixed test vector that the test suite also checks.
+`v1 = hex(HMAC-SHA256(secret, "{t}.{raw body}"))`, computed **at each attempt** over the same
+stored body, so a retry three days later carries a fresh `t` while the event id stays the same.
+Consumers recompute it over the raw body, compare in constant time, reject any `t` more than five
+minutes away from their clock in either direction (`abs(now − t) ≤ 300 s`, so a future timestamp
+is refused too), and deduplicate by event id (delivery is at least once; order is not guaranteed;
+`sequence` lets a consumer detect gaps). A routine rotation sends both signatures
+(`v1=new,v1=old`) for seven days; a rotation after a leak drops the previous secret at once, and
+the admin screen shows when each secret last signed a delivery. `docs/events/` ships a
+verification snippet and a fixed test vector that the test suite also checks.
 
 ### 10.4 CSV exports
 
@@ -558,6 +577,14 @@ leiaute tags (for example `cpfTrab`, `matricula`, `codCateg`, `dtAdm`, `codCBO`,
 `undSalFixo`, `qtdHrsSem`; `dtIniAfast`, `codMotAfast`, `dtTermAfast`; `dtDeslig`, `mtvDeslig`).
 The mapping lives in `docs/esocial/csv-columns.md`, built from the leiaute fields the rulebook
 records (§4 of the rulebook), and is checked against the S-1.3 leiaute when the export row ships. Exports require `esocial.export` and are audited.
+
+The outbox is company-scoped, but `esocial.export` can be granted with org-unit reach, so an export
+goes through the policy function like any list: each message is constrained through `scope()` on
+its employment (`aggregate_id`) as of today, and its columns pass through `FieldMask`. The files
+are useless without `cpfTrab`, `matricula`, `codCateg` and `vrSalFx`, so `esocial.export` is only
+granted together with the `identifiers` and `compensation` field groups; a grant without them
+cannot be saved. Tests cover an org-unit analyst exporting and the two-company case of
+[ADR-0011](../adr/0011-multi-company-single-installation.md).
 
 ## 11. Statutory rules and the rulebook
 

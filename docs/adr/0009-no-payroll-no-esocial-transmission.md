@@ -82,7 +82,9 @@ Concretely, v1:
   PR; an architecture test forbids XML signing libraries in `app/`).
 - Feature tests: an incomplete admission cannot be approved; each lifecycle event appears once in
   the outbox and once in the matching CSV export with the same values.
-- The column map in the TDD lists each column's leiaute tag and its verification status.
+- The column map in `docs/esocial/csv-columns.md` (roadmap row `esocial-csv-export`) lists each
+  column's leiaute tag and its verification status.
+- An export returns only events of employments the exporting user reaches, as of today.
 
 ## Pros and Cons of the Options
 
