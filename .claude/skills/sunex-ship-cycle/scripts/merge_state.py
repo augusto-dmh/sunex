@@ -40,6 +40,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PENDING_RE = re.compile(r"\bAD-PENDING-(\d+)\b")
 FINAL_RE = re.compile(r"\bAD-(\d{3,})\b")
 SECTION_RE = re.compile(r"^## ")
@@ -166,9 +167,17 @@ def land_lessons(root: Path, feature: Path, slug: str, lessons_script: Path, dry
     return len(entries)
 
 
+def slug(value: str) -> str:
+    # The slug becomes a path under .specs/features; an absolute or ".." value
+    # would make the landing rewrite files outside the cycle's folder.
+    if not SLUG_RE.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"{value!r} is not a kebab-case cycle slug")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("slug")
+    parser.add_argument("slug", type=slug)
     parser.add_argument("--root", type=Path, default=Path("."))
     parser.add_argument("--lessons-script", type=Path, help=f"default: <root>/{LESSONS_SCRIPT_REL}")
     parser.add_argument("--dry-run", action="store_true")

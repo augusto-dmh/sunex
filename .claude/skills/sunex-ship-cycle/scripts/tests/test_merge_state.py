@@ -137,6 +137,16 @@ class MergeStateTest(unittest.TestCase):
         self.assertIn("missing source, text", err)
         self.assertTrue((self.feature / "lessons-pending.jsonl").exists())
 
+    def test_slug_that_is_a_path_is_rejected(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        (outside / "context.md").write_text("## Project decisions\n\n### AD-PENDING-1\n- **Decision**: Escaped\n")
+        for value in (str(outside), "../outside"):
+            with self.subTest(slug=value), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+                merge_state.main([value, "--root", str(self.root)])
+            self.assertEqual(raised.exception.code, 2)
+        self.assertFalse(self.state.exists())
+
     def test_unknown_feature_is_a_usage_error(self) -> None:
         with redirect_stderr(io.StringIO()):
             self.assertEqual(merge_state.main(["nope", "--root", str(self.root)]), 2)
