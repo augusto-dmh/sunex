@@ -16,7 +16,7 @@ Commands:
   beat <slug> --stage N --name NAME --ref REF --status TEXT
   show [<slug>] [--stale-minutes M]      list heartbeats, flag stale ones
   clear <slug>                           remove a finished cycle's heartbeat
-  lock <slug> [--stale-minutes M] [--break-stale]
+  lock <slug> [--stale-minutes M] [--break-stale]   (re-run by the holder: refresh)
   unlock <slug> [--force]
   lock-status
 
@@ -79,6 +79,12 @@ def cmd_beat(root: Path, args: argparse.Namespace) -> int:
     if any("\n" in field for field in fields):
         print("heartbeat fields must be single-line", file=sys.stderr)
         return 2
+    # Only the last field may contain the separator: parse_line splits on the
+    # first five, so a separator anywhere else shifts the timestamp and makes a
+    # live cycle look stale.
+    if any(SEP in field for field in fields[:-1]):
+        print(f"only --status may contain {SEP.strip()!r}; rephrase --stage, --name or --ref", file=sys.stderr)
+        return 2
     target = root / f"{args.slug}.status"
     tmp = target.with_suffix(".tmp")
     tmp.write_text(SEP.join(fields) + "\n", encoding="utf-8")
@@ -112,7 +118,13 @@ def read_holder(lock: Path) -> tuple[str, str]:
     try:
         slug, _, stamp = (lock / "holder").read_text(encoding="utf-8").strip().partition(SEP)
     except FileNotFoundError:
-        return "", ""
+        # Between mkdir and write_holder the lock has no holder yet. Date it
+        # by the directory so a lock being acquired never reads as stale.
+        try:
+            mtime = datetime.fromtimestamp(lock.stat().st_mtime, timezone.utc).replace(microsecond=0)
+        except FileNotFoundError:
+            return "", ""
+        return "", mtime.isoformat()
     return slug, stamp
 
 
@@ -127,7 +139,10 @@ def cmd_lock(root: Path, args: argparse.Namespace) -> int:
     except FileExistsError:
         holder, stamp = read_holder(lock)
         if holder == args.slug:
-            print(f"merge lock already held by {args.slug}")
+            # Re-locking refreshes the stamp, so a holder that re-locks after
+            # each long wait (CI, full gates) never looks stale to a waiter.
+            write_holder(lock, args.slug)
+            print(f"merge lock already held by {args.slug}; stamp refreshed")
             return 0
         age = age_minutes(stamp)
         stale = age is None or age > args.stale_minutes

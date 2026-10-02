@@ -54,6 +54,15 @@ class HeartbeatTest(unittest.TestCase):
         self.run_cmd("beat", "org-chart", "--stage", "1", "--name", "build", "--status", "x | y")
         self.assertEqual(heartbeat.parse_line((self.state / "org-chart.status").read_text())["status"], "x | y")
 
+    def test_separator_outside_the_status_is_rejected(self) -> None:
+        for flag in ("--ref", "--name"):
+            with self.subTest(flag=flag):
+                argv = {"--stage": "1", "--name": "build", "--ref": "PR #1", "--status": "a"} | {flag: "x | y"}
+                code, _, err = self.run_cmd("beat", "org-chart", *[part for pair in argv.items() for part in pair])
+                self.assertEqual(code, 2)
+                self.assertIn("only --status", err)
+        self.assertFalse((self.state / "org-chart.status").exists())
+
     def test_old_heartbeats_are_flagged_stale_and_clear_removes_them(self) -> None:
         self.run_cmd("beat", "org-chart", "--stage", "1", "--name", "build", "--status", "a")
         self.assertIn("STALE", self.run_cmd("show", "--stale-minutes", "-1")[1])
@@ -80,6 +89,18 @@ class HeartbeatTest(unittest.TestCase):
         self.assertEqual(self.run_cmd("lock", "org-chart")[0], 4)
         self.assertEqual(self.run_cmd("lock", "org-chart", "--break-stale")[0], 0)
         self.assertIn("held by org-chart", self.run_cmd("lock-status")[1])
+
+    def test_holder_relocking_refreshes_the_stamp(self) -> None:
+        self.run_cmd("lock", "employee-record")
+        self.age_lock(200)
+        self.assertEqual(self.run_cmd("lock", "employee-record")[0], 0)
+        self.assertEqual(self.run_cmd("lock", "org-chart")[0], 3)
+
+    def test_lock_without_a_holder_yet_is_held_not_stale(self) -> None:
+        (self.state / "merge.lock").mkdir()
+        code, _, err = self.run_cmd("lock", "org-chart", "--break-stale")
+        self.assertEqual(code, 3)
+        self.assertNotIn("STALE", err)
 
     def test_fresh_lock_is_not_broken_by_break_stale(self) -> None:
         self.run_cmd("lock", "employee-record")
