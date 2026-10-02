@@ -190,22 +190,33 @@ def main(argv: list[str] | None = None) -> int:
     if args.message is not None:
         check_message("commit", args.message, report)
     if args.message_file:
-        with open(args.message_file, encoding="utf-8") as handle:
-            check_message("commit", handle.read(), report)
+        try:
+            with open(args.message_file, encoding="utf-8") as handle:
+                message = handle.read()
+        except OSError as exc:
+            print(f"cannot read --message-file: {exc}", file=sys.stderr)
+            return 2
+        check_message("commit", message, report)
+    checked = ""
     if args.rev_range:
         try:
             commits = commits_in_range(args.rev_range)
         except subprocess.CalledProcessError as exc:
             print(f"git failed: {exc.stderr.strip()}", file=sys.stderr)
             return 2
+        if not commits:
+            # An empty or reversed range must not read like a validated branch.
+            print(f"no commits in {args.rev_range}; check the range", file=sys.stderr)
+            return 2
         for sha, message in commits:
             check_message(f"commit {sha[:9]}", message, report)
+        checked = f" ({len(commits)} commit{'s' if len(commits) != 1 else ''} checked)"
 
     for error in report.errors:
         print(f"FAIL {error}", file=sys.stderr)
     if report.errors:
         return 1
-    print("validate_metadata: OK")
+    print(f"validate_metadata: OK{checked}")
     return 0
 
 

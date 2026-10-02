@@ -74,6 +74,11 @@ class RenderTest(unittest.TestCase):
         self.assertIn("hard-wrapped", err)
         self.assertIn("unchecked item", err)
 
+    def test_missing_draft_is_a_usage_error(self) -> None:
+        with redirect_stderr(io.StringIO()):
+            code = render_pr_body.main(["--draft", "/nonexistent/draft.md", "--template", str(TEMPLATE)])
+        self.assertEqual(code, 2)
+
     def test_headings_inside_code_fences_are_not_sections(self) -> None:
         self.assertEqual(run(draft(Tests="```md\n## Not a section\n```"))[0], 0)
 

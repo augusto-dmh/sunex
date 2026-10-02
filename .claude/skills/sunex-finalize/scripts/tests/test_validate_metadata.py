@@ -96,6 +96,29 @@ class RangeTest(unittest.TestCase):
             repo.commit("feat: no body", **{"b.txt": "b"})
             self.assertEqual(run("--range", "main..HEAD")[0], 1)
 
+    def test_reports_the_number_of_commits_checked(self) -> None:
+        with TempRepo() as repo:
+            repo.commit("chore: initial")
+            repo.git("checkout", "-q", "-b", "feat/x")
+            repo.commit(valid_message(), **{"a.txt": "a"})
+            out = io.StringIO()
+            with redirect_stdout(out), redirect_stderr(io.StringIO()):
+                self.assertEqual(validate_metadata.main(["--range", "main..HEAD"]), 0)
+            self.assertIn("(1 commit checked)", out.getvalue())
+
+    def test_empty_range_is_a_usage_error(self) -> None:
+        with TempRepo() as repo:
+            repo.commit("chore: initial")
+            repo.git("checkout", "-q", "-b", "feat/x")
+            code, err = run("--range", "main..HEAD")
+            self.assertEqual(code, 2)
+            self.assertIn("no commits", err)
+
+
+class InputTest(unittest.TestCase):
+    def test_missing_message_file_is_a_usage_error(self) -> None:
+        self.assertEqual(run("--message-file", "/nonexistent/msg.txt")[0], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

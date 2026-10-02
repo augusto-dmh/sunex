@@ -142,7 +142,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"template has no '## ' sections: {args.template}", file=sys.stderr)
         return 2
 
-    errors, warnings, body = check(args.draft.read_text(encoding="utf-8"), titles, set(args.allow))
+    try:
+        draft = args.draft.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"cannot read --draft: {exc}", file=sys.stderr)
+        return 2
+    errors, warnings, body = check(draft, titles, set(args.allow))
     for warning in warnings:
         print(f"WARN {warning}", file=sys.stderr)
     for error in errors:
