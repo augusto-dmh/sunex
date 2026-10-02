@@ -19,6 +19,7 @@ Usage:
   validate_metadata.py --message-file .git/COMMIT_EDITMSG
   validate_metadata.py --message "$(git log -1 --format=%B)"
   validate_metadata.py --range origin/main..HEAD
+  validate_metadata.py --range origin/main..HEAD --allow ADR-0015   # adds that ADR
 
 Exit codes: 0 pass, 1 violation, 2 usage error. Standard library only.
 """
@@ -45,10 +46,13 @@ TRAILER_LINE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*: .+$")
 INTERNAL_REF_PATTERNS = (
     ("task id", re.compile(r"\bT[0-9]{1,3}\b")),
     ("task/phase id", re.compile(r"\b[A-D][0-9]{1,2}\b")),
-    ("decision id", re.compile(r"\b(?:AD|ADR|D)-[0-9]+\b")),
+    # AD-PENDING-n is the provisional form a cycle uses until it merges.
+    ("decision id", re.compile(r"\b(?:AD|ADR|D)-(?:PENDING-)?[0-9]+\b")),
     ("requirement id", re.compile(r"\b(?:FR|NFR|AC|RFC|TDD|Gap)-[A-Za-z0-9]")),
     # tlc requirement IDs look like AUTH-01; exactly two digits keeps SHA-256 out.
-    ("spec requirement id", re.compile(r"\b(?!UTF-)[A-Z]{2,8}-[0-9]{2}\b")),
+    # Public code families with the same shape stay legal: CID-10 (disease
+    # codes on medical certificates), NR-15 (regulatory norms), PSR-12, ISO-...
+    ("spec requirement id", re.compile(r"\b(?!(?:UTF|CID|NR|PSR|ISO)-)[A-Z]{2,8}-[0-9]{2}\b")),
     ("cycle label", re.compile(r"\bcycle\s+[0-9]+", re.IGNORECASE)),
     ("phase label", re.compile(r"\bphase\s+[0-9]+", re.IGNORECASE)),
     ("gate label", re.compile(r"\bGate:")),
@@ -69,13 +73,19 @@ FORBIDDEN_ATTRIBUTION = (
 @dataclass
 class Report:
     errors: list[str] = field(default_factory=list)
+    allowed: frozenset[str] = frozenset()
 
     def fail(self, label: str, message: str) -> None:
         self.errors.append(f"{label}: {message}")
 
 
-def internal_refs(text: str) -> list[str]:
-    return [f"{name} {m.group(0)!r}" for name, pattern in INTERNAL_REF_PATTERNS for m in pattern.finditer(text)]
+def internal_refs(text: str, allowed: frozenset[str] = frozenset()) -> list[str]:
+    return [
+        f"{name} {m.group(0)!r}"
+        for name, pattern in INTERNAL_REF_PATTERNS
+        for m in pattern.finditer(text)
+        if m.group(0) not in allowed
+    ]
 
 
 def check_branch(branch: str, report: Report) -> None:
@@ -95,7 +105,7 @@ def check_header(label: str, header: str, report: Report) -> None:
         report.fail(label, "description must start lowercase")
     if desc.rstrip().endswith("."):
         report.fail(label, "description must not end with a period")
-    for hit in internal_refs(header):
+    for hit in internal_refs(header, report.allowed):
         report.fail(label, f"internal reference {hit}")
 
 
@@ -143,7 +153,7 @@ def check_message(label: str, message: str, report: Report) -> None:
             report.fail(label, f"forbidden attribution matching {pattern.pattern!r}")
 
     body = "\n".join("\n".join(p) for p in body_paragraphs)
-    for hit in internal_refs(body):
+    for hit in internal_refs(body, report.allowed):
         report.fail(f"{label} body", f"internal reference {hit}")
 
 
@@ -165,12 +175,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--message", help="full commit message (header, body, trailer)")
     parser.add_argument("--message-file")
     parser.add_argument("--range", dest="rev_range", help="validate every non-merge commit in a git range")
+    parser.add_argument("--allow", action="append", default=[],
+                        help="public identifier the internal-reference check accepts, e.g. ADR-0014 in the commit that adds it")
     args = parser.parse_args(argv)
 
     if not any((args.branch, args.pr_title, args.message, args.message_file, args.rev_range)):
         parser.error("provide at least one of --branch, --pr-title, --message, --message-file, --range")
 
-    report = Report()
+    report = Report(allowed=frozenset(args.allow))
     if args.branch:
         check_branch(args.branch, report)
     if args.pr_title:

@@ -101,6 +101,6 @@ End with: PR URL and number; commits (hash and header); gates run with results; 
 
 ## Troubleshooting
 
-- **Validator rejects an internal reference that is not one** (for example a legal reference that happens to look like an ID): rephrase if the meaning survives; for a PR body, `--allow <token>` is acceptable when the token is a public identifier, and the PR's Decisions section says why.
+- **Validator rejects an internal reference that is not one** (for example a legal reference that happens to look like an ID): rephrase if the meaning survives; otherwise pass `--allow <token>` (both `validate_metadata.py` and `render_pr_body.py` accept it) when the token is a public identifier, and the PR's Decisions section says why. Public code families such as `CID-10`, `NR-15` and eSocial events (`S-2200`) are already accepted.
 - **`gh` cannot authenticate or push:** report the exact error; return the validated title and rendered body so a human can publish.
 - **Clean-room term list missing:** stop before pushing and tell the owner the list is needed at the path the script prints. Do not push without the check.

@@ -36,9 +36,11 @@ class HeaderTest(unittest.TestCase):
         self.assertEqual(run("--pr-title", "feat(absence): enforce rules.")[0], 1)
 
     def test_rejects_internal_ids_in_title(self) -> None:
-        code, err = run("--pr-title", "feat(absence): implement AD-012 split rule")
-        self.assertEqual(code, 1)
-        self.assertIn("internal reference", err)
+        for title in ("feat(absence): implement AD-012 split rule", "feat(absence): apply AD-PENDING-2 split rule"):
+            with self.subTest(title=title):
+                code, err = run("--pr-title", title)
+                self.assertEqual(code, 1)
+                self.assertIn("internal reference", err)
 
 
 class MessageTest(unittest.TestCase):
@@ -68,14 +70,20 @@ class MessageTest(unittest.TestCase):
         self.assertIn("missing body", err)
 
     def test_rejects_internal_ids_in_body(self) -> None:
-        for token in ("T12", "AD-007", "VAC-03", "phase 2", ".specs/features/x"):
+        for token in ("T12", "AD-007", "AD-PENDING-1", "VAC-03", "phase 2", ".specs/features/x"):
             with self.subTest(token=token):
                 message = valid_message().replace("stores each", f"see {token}; stores each")
                 self.assertEqual(run("--message", message)[0], 1)
 
-    def test_keeps_esocial_event_codes_and_hashes_legal(self) -> None:
-        message = valid_message().replace("stores each", "maps S-2200 and S-2230 with SHA-256 signatures; stores each")
-        self.assertEqual(run("--message", message)[0], 0)
+    def test_keeps_public_codes_and_hashes_legal(self) -> None:
+        codes = "maps S-2200 and S-2230 with SHA-256 signatures, CID-10 codes, NR-15 grades and PSR-12; stores each"
+        self.assertEqual(run("--message", valid_message().replace("stores each", codes))[0], 0)
+        self.assertEqual(run("--pr-title", "feat(absence): store the CID-10 code of medical certificates")[0], 0)
+
+    def test_allow_accepts_a_named_public_identifier(self) -> None:
+        title = "docs(adr): record the time model in ADR-0015"
+        self.assertEqual(run("--pr-title", title)[0], 1)
+        self.assertEqual(run("--pr-title", title, "--allow", "ADR-0015")[0], 0)
 
 
 class RangeTest(unittest.TestCase):
