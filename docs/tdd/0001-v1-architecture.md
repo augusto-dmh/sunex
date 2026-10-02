@@ -225,7 +225,10 @@ current-belief partial index serves the common case (`knownAt = now`). List scre
 All writes go through `People\Contracts\EmploymentWriter`, called by Movements when an approval
 completes, and by HR corrections. One write is one transaction:
 
-1. `SELECT … FROM employments WHERE id = ? FOR UPDATE` serializes writers per employment.
+1. `SELECT … FROM employments WHERE id = ? FOR UPDATE` serializes writers per employment. When
+   the delta touches `manager_employment_id`, the writer also takes `pg_advisory_xact_lock` on one
+   installation-wide manager-chain key (a manager may work for another company of the group), so
+   two concurrent changes A→B and B→A cannot both pass the cycle check of step 7.
 2. Only then capture `recordedAt = clock->now()`, once; reading the clock before the lock would
    let a writer that waited close a row with a timestamp older than the row's own start.
 3. Load the current-belief timeline.
@@ -261,9 +264,11 @@ Concurrency and clocks: the row lock serializes writers, and the clock is read a
 each write's `recordedAt` is later than every row it closes. If two application servers' clocks
 still disagree, closing a row at or before its own start would produce an inverted or empty range:
 PostgreSQL rejects the inverted one, and the `recorded_period_not_empty` check and the trigger
-reject the empty one, so the write fails instead of erasing a belief. The writer also asserts
-`recordedAt > lower(recorded_period)` of every row it closes and retries once after re-reading the
-clock. The planner is unit-tested with tables of timelines; the
+reject the empty one, so the write fails instead of erasing a belief. Under the lock the writer
+also requires `recordedAt` to be later than the greatest `lower(recorded_period)` of every row of
+the employment (one indexed query) and otherwise fails with `clock_behind_history`, without
+retrying: transaction time never repeats or goes backwards for one employment. The test clock
+advances one microsecond per read, so two writes in one test never share an instant. The planner is unit-tested with tables of timelines; the
 constraint and trigger are feature-tested against PostgreSQL.
 
 ### 7.5 eSocial identifiers and admission readiness
@@ -320,12 +325,15 @@ Each outbound message carries its computed `esocial_deadline`, and dashboards so
 
 Movements and férias both need multi-step approvals with segregation of duties, and module 2 will
 need them again, so the engine lives in Shared and knows nothing about HR. It resolves approvers
-through the `ReachResolver` interface that People implements.
+through the `ReachResolver` interface that People implements. Each flow registers an
+`ApprovalSubjectHandler` (an interface in `Shared\Approvals`, bound per `flow` by Movements and
+Absence) with `summary()` for the inbox and `onApproved()` / `onRejected()`, which the engine calls
+inside the deciding transaction; the subject's user comes from `ReachResolver::userOf(subject)`.
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `approval_requests` | `company_id`, `subject_type`, `subject_id`, `flow`, `status` (pending, approved, rejected, cancelled), `requested_by_user_id`, `requested_via_agent_id` (nullable), `decided_at` | one pending request per subject |
-| `approval_steps` | `approval_request_id`, `position`, `approver_rule`, `status` (waiting, active, approved, rejected, skipped), `assigned_user_id`, `decided_by_user_id`, `decided_at`, `comment`, `requester_user_id` (denormalized) | unique `(approval_request_id, position)`; unique `(approval_request_id, decided_by_user_id)`; `CHECK (decided_by_user_id IS NULL OR decided_by_user_id <> requester_user_id)` |
+| `approval_requests` | `company_id`, `subject_type`, `subject_id`, `flow`, `status` (pending, approved, rejected, cancelled), `requested_by_user_id`, `requested_via_agent_id` (nullable), `decided_at` | one pending request per subject; unique `(id, requested_by_user_id)` |
+| `approval_steps` | `approval_request_id`, `position`, `approver_rule`, `status` (waiting, active, approved, rejected, skipped), `assigned_user_id`, `decided_by_user_id`, `decided_at`, `comment`, `requester_user_id` (copied, `NOT NULL`) | foreign key `(approval_request_id, requester_user_id)` → `approval_requests (id, requested_by_user_id)`, so the copy cannot drift; unique `(approval_request_id, position)`; unique `(approval_request_id, decided_by_user_id)`; `CHECK (decided_by_user_id IS NULL OR decided_by_user_id <> requester_user_id)` |
 
 Steps run in sequence. When a step becomes active its approver is resolved **as of that day**:
 
@@ -333,7 +341,12 @@ Steps run in sequence. When a step becomes active its approver is resolved **as 
 |---|---|
 | `manager_of_subject` | the subject's manager in the current-belief version valid today |
 | `skip_level_manager` | that manager's manager |
-| `hr_of_company` | any user holding `movements.approve` with company reach over the subject (a shared queue) |
+| `hr_of_company` | any user holding the flow's approve capability (`movements.approve` or `absence.approve`) with company reach over the subject (a shared queue) |
+
+An active step is resolved again when its assignee loses the capability or the reach (a transfer,
+a termination), and an HR admin may reassign it, audited. A flow that segregation of duties leaves
+without an eligible human fails at submit with `no_eligible_approver` instead of waiting forever.
+Delegation during absences and timed escalation are later work.
 
 Segregation of duties, and where each rule is enforced:
 
@@ -345,6 +358,11 @@ Segregation of duties, and where each rule is enforced:
 | When the resolved manager is the requester, the step goes to the skip-level manager; with no manager, to HR | resolver, table-tested |
 | Agents never hold an approval capability | `Capability::isHumanOnly()` + `Authorizer` + architecture test on agent scopes |
 | A salary change needs two distinct humans (manager, then HR) | flow definition + unique index |
+| Nobody records facts on their own employment directly (`absence.record`, `movements.correct`); another HR user does | `Authorizer` (`segregation_of_duties`) + decision-matrix row |
+
+A decision locks its `approval_requests` row `FOR UPDATE` and checks again that the step is still
+`active`, so two approvers deciding the same step at once cannot both win; the movement's
+`approved → applied` transition is a guarded update (`WHERE status = 'approved'`).
 
 ### 8.2 Movement types
 
@@ -395,7 +413,7 @@ in test datasets.
 | `leave_type_rules` | `esocial_reason_code`, `duration_days`, `funding` (employer, inss, employer_reimbursed), `valid_period daterange`, `condition` (nullable, e.g. the 2029 fiscal target), `requires_empresa_cidada` | exclusion constraint on `(esocial_reason_code, valid_period)` |
 | `vacation_requests` | `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `abono_requested_by_user_id`, `split_consent_at`, `split_consent_by_user_id`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date`, `notice_acknowledged_at` | |
 | `vacation_request_periods` | `vacation_request_id`, `period daterange`, `days`, `truncated_at` (nullable) | up to three per request |
-| `leave_ledger_entries` | `acquisition_period_id`, `kind` (entitlement, enjoyment, abono, adjustment, reversal), `days` (signed), `source_type`, `source_id`, `recorded_at`, `recorded_by` | append-only; balance = sum |
+| `leave_ledger_entries` | `acquisition_period_id`, `kind` (entitlement, enjoyment, abono, adjustment, reversal), `days` (signed), `source_type`, `source_id`, `recorded_at`, `recorded_by` | append-only; balance = sum; every ledger write locks its `acquisition_periods` row `FOR UPDATE` and checks balance and feasibility again after the lock, and request status changes are guarded updates, so two approvals cannot overspend one PA |
 
 Three design points come from the rulebook and change what earlier research assumed:
 
