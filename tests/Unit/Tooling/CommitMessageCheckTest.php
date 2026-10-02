@@ -22,6 +22,7 @@ it('accepts conventional commits with an allowed scope and the Assisted-by trail
     'leading digit' => "chore(deps): 2 packages need a newer php\n",
     'merge commit' => "Merge branch 'main' into feat/people\n",
     'git revert' => "Revert \"feat(org): add positions\"\n",
+    'regenerated in the body' => "fix(deps): complete the lockfile\n\nRegenerated with npm 11.\n",
     '72 characters with accents' => 'feat(absence): f'.str_repeat('é', 56)."\n",
 ]);
 
@@ -40,4 +41,5 @@ it('rejects messages that break the convention', function (string $message, stri
     'co-authored-by trailer' => ["feat(people): add persons\n\nCo-Authored-By: Someone <a@b.c>\n", 'forbidden trailer'],
     'signed-off-by trailer' => ["feat(people): add persons\n\nSigned-off-by: Someone <a@b.c>\n", 'forbidden trailer'],
     'generated-with footer' => ["feat(people): add persons\n\nGenerated with a tool\n", 'forbidden trailer'],
+    'generated-with footer after an emoji' => ["feat(people): add persons\n\n🤖 Generated with [a tool](https://example.com)\n", 'forbidden trailer'],
 ]);

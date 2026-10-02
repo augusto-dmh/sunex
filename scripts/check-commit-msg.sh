@@ -29,6 +29,6 @@ if ! printf '%s' "$header" | LC_ALL=C grep -Eq "^($types)(\(($scopes)\))?!?: [a-
   echo "  scopes: $scopes (optional)" >&2
   exit 1
 fi
-if printf '%s\n' "$msg" | grep -Eiq '^(Co-Authored-By|Signed-off-by):|Generated with'; then
+if printf '%s\n' "$msg" | LC_ALL=C grep -Eiq '^(Co-Authored-By|Signed-off-by):|(^|[^a-z])Generated with'; then
   echo "forbidden trailer: disclose AI assistance only with 'Assisted-by: <tool>'" >&2; exit 1
 fi
