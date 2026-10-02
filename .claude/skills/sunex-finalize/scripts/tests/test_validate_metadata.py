@@ -58,6 +58,16 @@ class MessageTest(unittest.TestCase):
         )
         self.assertEqual(run("--message", message)[0], 1)
 
+    def test_rejects_attribution_outside_the_trailer_paragraph(self) -> None:
+        # The trailer stays valid, so only the attribution patterns can fail these.
+        for line in ("Co-Authored-By: Someone <a@b.c>", "\U0001F916 Generated with [Claude Code](https://claude.com)",
+                     "Written with help \U0001F916"):
+            with self.subTest(line=line):
+                message = valid_message().replace("stores each", f"stores each\n{line}\nand")
+                code, err = run("--message", message)
+                self.assertEqual(code, 1)
+                self.assertIn("forbidden attribution", err)
+
     def test_rejects_generated_with_claude_but_not_other_generators(self) -> None:
         bad = valid_message().replace("stores each", "Generated with Claude Code, stores each")
         fine = valid_message().replace("stores each", "routes generated with Wayfinder; stores each")
