@@ -27,23 +27,26 @@ Rules that keep parallel rows from colliding:
 
 ## Phase 0: Foundation (in flight)
 
+F2 grew while it was built: its pull request also delivers all of row 01 and the skeleton and
+dependency-table tests of row 02, so those rows below describe only what remains.
+
 | # | Row | Scope | Depends on | Parallel-safe with | Size | Status |
 |---|---|---|---|---|---|---|
-| F1 | `docs-foundation` | README, ARCHITECTURE, brief, TDD-0001, ADR 0000–0014, this roadmap, STATE, AGENTS/CLAUDE through Boost guidelines, license and policies | — | F2, F3 | L | In review |
-| F2 | `quality-tooling` | Pint, Larastan, Rector, Pest arch and coverage setup, CI workflow on pull requests | — | F1, F3 | M | In review |
-| F3 | `delivery-harness` | Ship-cycle skills, PR template, commit-message check | — | F1, F2 | M | In review |
+| F1 | `docs-foundation` | README, ARCHITECTURE, brief, TDD-0001, ADR 0000–0014, this roadmap, STATE, AGENTS/CLAUDE through Boost guidelines, license and policies | — | F2, F3 | L | In review (PR #2) |
+| F2 | `quality-tooling` | Pint, Larastan level 9 (the scaffold's defects fixed, no baseline), Rector, Pest presets, one Composer script per gate (`lint`, `analyse`, `refactor-check`, `test`, `frontend-check`) plus `composer check`, one CI job per gate, the commit-message check in CI; also all of row 01 (PostgreSQL 17 + pgvector in `compose.yaml` on host port 54329, the `sunex_testing` database, the extensions migration and its test, Pest on PostgreSQL locally and in CI) and part of row 02 (the empty `app/Domain/*` contexts and arch tests for the ARCHITECTURE dependency table and the delivery-layer rule). The coverage gate moved to row 02 | — | F1, F3 | L | In review (PR #3) |
+| F3 | `delivery-harness` | Ship-cycle skills, PR template, the commit and PR metadata validator the skills run (the CI commit-message check is in F2) | — | F1, F2 | M | In review (PR #1) |
 
 ## v1 rows
 
 | # | Row | TDD phase | Scope | Depends on | Parallel-safe with | Wave | Size | Status |
 |---|---|---|---|---|---|---|---|---|
-| 01 | `postgres-platform` | 1 | Compose file with PostgreSQL 17 + pgvector on host port 54329; `.env.example` points at it; migration enabling `btree_gist` and `vector`; Pest on PostgreSQL locally and as a CI service; test asserting both extensions | F2 | 02, 03, 04, 05 | A | S | Not started |
-| 02 | `domain-boundaries` | 1 | `app/Domain/{Shared,Organization,People,Movements,Absence,Agents}` with `Contracts`/`Events` conventions; per-context route files; Pest arch tests encoding the ARCHITECTURE dependency table and rules 1–5 | F2 | 01, 03, 04, 05 | A | S | Not started |
-| 03 | `shared-value-objects` | 1 | `Cpf`, `Cnpj` (numeric and alphanumeric), `CboCode`, `Matricula`, inclusive `DateRange` with half-open conversion and its Eloquent cast (`daterange` ↔ value object), `Clock` with a test clock that advances one microsecond per read, the `Calendar` interface (holidays, weekly rest day, business days); pure unit tests with check-digit vectors | F2 | 01, 02, 04, 05 | A | S | Not started |
-| 04 | `translation-keys` | 1 | English copy of the starter-kit pages moved behind keys; Vue `t()` helper fed by Inertia shared props; per-context `lang/en` files; test failing on a key used in `resources/js` or PHP but missing from `lang/en` | F2 | 01, 02, 03, 05 | A | M | Not started |
-| 05 | `clt-rulebook` | 8 | Import the primary-source rulebook into `docs/compliance/clt-rules.md`: conventions C-, férias F-, afastamentos A-, eSocial E- rules with verbatim sources and example cases, the effect of each afastamento on the PA, the unverified items and interpretations, and the v1 scope (categories 101 and 103); reconcile F-17's "one third is a maximum" with U-07 and add the dataset case "abono 5 of 30 → invalid" | F1 | 01, 02, 03, 04, and every row that does not depend on it | A | S | Not started |
-| 06 | `principals-and-roles` | 2 | `Principal`, the full v1 `Capability` enum, assigned roles with company reach and `valid_period`, `Authorizer::decide()` and `scope()` with the `ReachResolver` seam, access always decided as of today and the `couldSee` audit query, `Decision` with field groups (all visible for now), policies delegating to it; role assignments carry `company_id` without a foreign key until row 10; decision-matrix tests for company reach | 01, 02 | 07, 08, 09 | B | M | Not started |
-| 07 | `audit-log` | 2 | `spatie/laravel-activitylog` 5 with the acting user as causer and a `Shared\Audit` causer seam (Shared never names the Agents model), reason capture, audit component for a subject | 01, 02 | 06, 08, 09 | B | S | Not started |
+| 01 | `postgres-platform` | 1 | Delivered inside F2 (PR #3); nothing remains. Rows that depend on 01 are unblocked when F2 merges | F2 | — | A | — | In review (PR #3, inside F2) |
+| 02 | `domain-boundaries` | 1 | What F2 left: per-context route files (`routes/<context>.php`) loaded from `bootstrap/app.php`; arch tests for the rules F2 did not encode (no role-name checks outside `Shared\Access`; `app/Http/Queries` never calls actions or writes; a context's models used only by that context, with an allow-list for its factories, seeders and tests); the Pest coverage gate with a minimum on `app/Domain` | F2 | 03, 04, 05 | A | S | Not started |
+| 03 | `shared-value-objects` | 1 | `Cpf`, `Cnpj` (numeric and alphanumeric), `CboCode`, `Matricula`, inclusive `DateRange` with half-open conversion and its Eloquent cast (`daterange` ↔ value object), `Clock` with a test clock that advances one microsecond per read, the `Calendar` interface (holidays, weekly rest day, business days); pure unit tests with check-digit vectors | F2 | 02, 04, 05 | A | S | Not started |
+| 04 | `translation-keys` | 1 | English copy of the starter-kit pages moved behind keys; Vue `t()` helper fed by Inertia shared props; per-context `lang/en` files; test failing on a key used in `resources/js` or PHP but missing from `lang/en` | F2 | 02, 03, 05 | A | M | Not started |
+| 05 | `clt-rulebook` | 8 | Import the primary-source rulebook into `docs/compliance/clt-rules.md`: conventions C-, férias F-, afastamentos A-, eSocial E- rules with verbatim sources and example cases, the effect of each afastamento on the PA, the unverified items and interpretations, and the v1 scope (categories 101 and 103); reconcile F-17's "one third is a maximum" with U-07 and add the dataset case "abono 5 of 30 → invalid" | F1 | 02, 03, 04, and every row that does not depend on it | A | S | Not started |
+| 06 | `principals-and-roles` | 2 | `Principal`, the full v1 `Capability` enum, assigned roles with company reach and `valid_period`, `Authorizer::decide()` and `scope()` with the `ReachResolver` seam, access always decided as of today and the `couldSee` audit query, `Decision` with field groups (all visible for now), policies delegating to it; role assignments carry `company_id` without a foreign key until row 10; decision-matrix tests for company reach | 02 | 07, 08, 09 | B | M | Not started |
+| 07 | `audit-log` | 2 | `spatie/laravel-activitylog` 5 with the acting user as causer and a `Shared\Audit` causer seam (Shared never names the Agents model), reason capture, audit component for a subject | 02 | 06, 08, 09 | B | S | Not started |
 | 08 | `timeline-planner` | 4 | Pure `TimelinePlanner` for change (split + forward propagation), correction and rescission; table-driven tests including the TDD §7.4 worked example; no database | 02, 03 | 06, 07, 09, 10, 11, 12, 13 | B | M | Not started |
 | 09 | `vacation-rules-engine` | 8 | `Absence\Rules`: PA and PC (F-01, C-02, C-03), entitlement (F-02 to F-05), loss (F-08 to F-10), split (F-12), start restriction (F-13), notice (F-14), payment date (F-16), abono (F-17), concessive risk (F-11, F-15), PA chain with loss and pause; datasets from the rulebook's example cases plus "manager-drafted split without the employee's consent → `split_requires_consent`" | 02, 03, 05 | 06 to 21 | B | L | Not started |
 | 36 | `esocial-deadlines` | 7 | Pure `EsocialDeadlines` service: S-2200, S-2206, S-2230 and S-2299 deadlines (E-02 to E-05) on the business-day `Calendar`, with the shift direction per event; datasets from the rulebook's deadline examples. Numbered after the v1 rows because it was added when the rulebook landed; row numbers are stable ids, not order | 02, 03, 05 | 06, 07, 08, 09, 10, 11 | B | S | Not started |
@@ -75,7 +78,7 @@ Rules that keep parallel rows from colliding:
 | 34 | `golden-path-browser-test` | 11 | Pest browser test of the brief's demo path: agent draft → employee confirmation → manager approval → signed webhook received by a test endpoint → audit trail visible. If row 32 is cut, the path starts with the employee drafting in the UI and the agent step returns in v1.1 | 20, 33, and 32 unless it is cut (then 27) | 37, 38 | J | M | Not started |
 | 35 | `v1-release` | 11 | Docs pass (README quickstart and screenshots, ARCHITECTURE, TDD updated to what was built), CHANGELOG, `v1.0.0` tag, retrospective | 01–34, 36, 37 | — | J | S | Not started |
 
-Critical path: F2 → 01/02 → 06 → 10 → 12/13 → 14 → 17 → 19 → 24 → 33 → 34 → 35. The absence
+Critical path: F2 → 02 → 06 → 10 → 12/13 → 14 → 17 → 19 → 24 → 33 → 34 → 35. The absence
 path runs beside it (14 → 18 and 22 → 27/28 → 33), and the agent path joins at 17 → 23 → 29 → 32
 → 34. **Checkpoint:** row 14 (`employment-versions`) merged by the
 end of week 5; if not, row 32 moves to v1.1, then row 30 if the schedule still slips (TDD §18).
@@ -84,7 +87,7 @@ Parallel groups at a glance:
 
 | Wave | Rows that can run at the same time |
 |---|---|
-| A | 01, 02, 03, 04, 05 (as soon as F1 and F2 merge) |
+| A | 02, 03, 04, 05 (as soon as F1 and F2 merge; row 01 shipped inside F2) |
 | B | 06, 07, 08, 09, 36 |
 | C | 10 (08 and 09 may still be running) |
 | D | 11, 12, 13 |

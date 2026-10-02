@@ -69,19 +69,22 @@ None for the next rows. Items only the owner can do:
 
 | Item | Owner |
 |---|---|
-| `composer.json` still says `"license": "MIT"`, `"name": "laravel/vue-starter-kit"` and `php ^8.3`; ADR-0014 and ADR-0002 call for `AGPL-3.0-only` and `^8.4` | the row that owns composer files (quality tooling or row 01) |
-| `.gitignore` lists `AGENTS.md`, `CLAUDE.md` and `boost.json`; the first two are force-added. Versioning `boost.json` would let anyone regenerate the same guidance | whoever owns `.gitignore` |
+| `composer.json` still says `"license": "MIT"`, `"name": "laravel/vue-starter-kit"` and `php ^8.3`; ADR-0014 and ADR-0002 call for `AGPL-3.0-only` and `^8.4` | resolved by F2 (PR #3) |
+| `.gitignore` lists `AGENTS.md`, `CLAUDE.md` and `boost.json`; the first two are force-added. Versioning `boost.json` would let anyone regenerate the same guidance | resolved by F2 (PR #3), which tracks all three |
 
 ## Handoff
 
-Foundation PRs F1 (`docs-foundation`), F2 (`quality-tooling`) and F3 (`delivery-harness`) are in
-review. As soon as F1 and F2 merge, **wave A** can start in five parallel worktrees:
+Foundation PRs F1 (`docs-foundation`, PR #2), F2 (`quality-tooling`, PR #3) and F3
+(`delivery-harness`, PR #1) are in review. F2 already delivers row 01 (PostgreSQL through Compose,
+tests on PostgreSQL in CI) and the skeleton and dependency-table tests of row 02. Merge F2 before
+or together with F1: README, CONTRIBUTING and the agent guide describe the gates by the names F2
+introduces. As soon as F1 and F2 merge, **wave A** can start in four parallel worktrees:
 
-1. `postgres-platform` (row 01): the Compose file and the CI service unblock every database row.
-2. `domain-boundaries` (row 02): the arch tests must exist before the first context code lands.
-3. `shared-value-objects` (row 03): pure, no database; unblocks the planner and the rules engine.
-4. `translation-keys` (row 04): do it before any new screen exists.
-5. `clt-rulebook` (row 05): documentation only; the private rulebook is complete (2026-10-02), so
+1. `domain-boundaries` (row 02, what F2 left): route files per context, the remaining arch rules
+   and the coverage gate, before the first context code lands.
+2. `shared-value-objects` (row 03): pure, no database; unblocks the planner and the rules engine.
+3. `translation-keys` (row 04): do it before any new screen exists.
+4. `clt-rulebook` (row 05): documentation only; the private rulebook is complete (2026-10-02), so
    this is an import with public links.
 
 Then wave B: `principals-and-roles` (06), `audit-log` (07), `timeline-planner` (08),
