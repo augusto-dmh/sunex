@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 it('runs the suite on PostgreSQL 17', function () {
@@ -17,7 +18,7 @@ it('rejects overlapping date ranges for the same key through an exclusion constr
     DB::table('range_probe')->insert(['person_id' => 2, 'during' => '[2026-01-15,2026-02-15)']);
 
     expect(fn () => DB::table('range_probe')->insert(['person_id' => 1, 'during' => '[2026-01-15,2026-02-15)']))
-        ->toThrow(Illuminate\Database\QueryException::class, 'range_probe_person_id_during_excl');
+        ->toThrow(QueryException::class, 'range_probe_person_id_during_excl');
 });
 
 it('stores and compares pgvector embeddings', function () {
