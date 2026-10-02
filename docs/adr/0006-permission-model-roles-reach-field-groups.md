@@ -70,7 +70,8 @@ The design:
   never serialized), and on a list each row gets the union of the grants that reach that row.
 - Laravel policies are thin and delegate to the `Authorizer`. Agents and MCP clients reach the
   same function through the tool gateway, where an agent's rights are its scopes intersected with
-  the rights of the human it acts for ([ADR-0007](0007-agents-as-principals-one-toolset.md)).
+  the rights of the human it acts for and the rights of its sponsor
+  ([ADR-0007](0007-agents-as-principals-one-toolset.md)).
 
 ### Consequences
 

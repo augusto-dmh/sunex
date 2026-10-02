@@ -716,16 +716,28 @@ the map for every column in §7–§9. Tests assert on the serialized JSON, not 
 
 | Table | Columns |
 |---|---|
-| `agents` | `company_id`, `name`, `description`, `kind` (in_app, mcp_client), `owner_user_id`, `sponsor_user_id`, `mode` (on_behalf_of, autonomous), `scopes` (capability list), `status` (pending, active, suspended, revoked), `oauth_client_id` (MCP clients), `suspended_reason` |
+| `agents` | `company_id`, `name`, `description`, `kind` (in_app, mcp_client), `owner_user_id`, `sponsor_user_id`, `mode` (on_behalf_of, autonomous), `scopes` (capability list), `field_groups` (ceiling, default `basic`), `status` (pending, active, suspended, revoked), `oauth_client_id` (MCP clients), `suspended_reason` |
 | `agent_runs` | `agent_id`, `acting_user_id`, `channel` (in_app, mcp), `invocation_id` (SDK) or `mcp_request_id`, `conversation_id`, `provider`, `model`, `status`, `steps`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `started_at`, `finished_at` |
 | `agent_tool_calls` | `agent_run_id`, `agent_id`, `acting_user_id`, `sponsor_user_id`, `tool`, `input_hash` (SHA-256 of canonical JSON), `input_redacted` (jsonb), `decision` (allowed, denied), `decision_reasons`, `subject_type`, `subject_id`, `approval_request_id`, `diff` (jsonb before/after), `result_status`, `created_at` |
 
 Effective rights: `scopes ∩ rights of the human it acts for ∩ rights of the sponsor`, as of the
 date. In `on_behalf_of` mode the human it acts for is the invoking user; in `autonomous` mode it is
 the sponsor, and v1 allows autonomous agents read scopes only. Either way an agent never sees or
-does what its sponsor could not. When a sponsor's employment is terminated, a listener suspends every agent
-they sponsor until an admin assigns a new sponsor (the HR system owns the lifecycle the agent
-depends on; compare sponsor transfer in
+does what its sponsor could not.
+
+The agent's own `field_groups` ceiling is intersected too. Every tool result goes to a model
+provider (in-app) or to an external assistant (MCP), and a human's right to see a CPF, a salary or
+an afastamento motive is not a basis for sending it to a third-party processor (LGPD arts. 11 and
+33). The ceiling defaults to `basic`; widening it to `identifiers`, `compensation`,
+`employment_notes` or `absence_details` is an explicit, audited admin action. The two v1 agents
+need only balances, dates and basic fields.
+
+The sponsor bound fails closed: the gateway refuses every call unless the sponsor and the acting
+user each hold a role (derived or assigned) valid today. That covers sponsors who have no
+employment at all (§7.1), the end of a sponsor's last role assignment and a disabled account.
+Listeners make it prompt: a termination recorded on the sponsor's employment, or the end of their
+last assignment, suspends every agent they sponsor until an admin assigns a new sponsor (the HR
+system owns the lifecycle the agent depends on; compare sponsor transfer in
 [Microsoft Entra Agent ID](https://learn.microsoft.com/en-us/entra/agent-id/whats-new-agent-id)).
 
 ### 13.2 One toolset, one gateway
@@ -761,7 +773,10 @@ The audit row is written by the gateway inside the domain transaction, not deriv
 conversation store or middleware: the store persists tool results only when a turn completes
 (laravel/ai #981) and agent middleware no longer wraps tool execution (#1060)
 ([ADR-0008](../adr/0008-agent-runtime-laravel-ai-and-mcp.md)). If the domain write rolls back, so
-does the audit row; nothing is claimed that did not happen.
+does the audit row; nothing is claimed that did not happen. The gateway then writes a
+`result_status = failed` row (decision allowed, error code, no diff) in its own transaction, as it
+does for denied calls, so every call leaves one row and a diff exists only if the change
+committed.
 
 Filtering the tool list per agent (`withTools` in-app, `shouldRegister` on MCP) is a convenience
 that keeps context small; the gateway's check is the enforcement ("a search result is never a
@@ -776,6 +791,12 @@ capability grant", Laravel MCP 1.0).
 
 The domain approval is the source of truth for every channel (UI, in-app agent, MCP); its id is the
 `approval_request_id` on the audit row. The SDK pause is only a confirmation step.
+
+The confirmation itself is a Sunex rule, not something the SDK provides. The in-app pause runs in
+Sunex's own agent loop, so Sunex records the employee's answer. An MCP client runs its own loop,
+and whether it asks the human depends on the client, so in v1 the gateway refuses
+`SubmitVacationRequest` on the `mcp` channel (`human_confirmation_required`): an MCP client may
+draft, and its reply links the draft for the employee to submit in Sunex.
 
 ### 13.4 MCP server and OAuth
 
@@ -849,8 +870,11 @@ sequenceDiagram
     Ab->>P: vacation.scheduled, signed (via outbox)
 ```
 
-The agent never approves, never submits without the employee's confirmation, and every tool call
-(including the rejected first draft) is in `agent_tool_calls` with the approval id once it exists.
+The agent never approves, never submits without the employee's confirmation (recorded by Sunex,
+§13.3), and every tool call (including the rejected first draft) is in `agent_tool_calls` with the
+approval id once it exists. A draft is the employee's working document, not a change to the record:
+it affects no balance, absence or outbound event until a human approves it, which is how the
+brief's no-go on agent changes applies to it.
 This agent is the first cut if v1 runs late (brief, appetite); §18 says what the demo path
 becomes without it.
 
@@ -875,8 +899,12 @@ to rule F-12 and see every case.
 
 - **Authorization in one place** (§12), with masking on the server and tests on serialized output.
 - **Agents cannot escalate through content.** Tools take no authorization parameters from the
-  model; the principal comes from the request context. Policy documents are treated as untrusted
-  text; nothing in them changes what a tool may do.
+  model; the principal comes from the request context. Policy documents and every free-text field
+  a person wrote (names, reason notes, approval comments, request notes) are untrusted text when
+  they reach a model; nothing in them changes what a tool may do, and no write is submitted without
+  a confirmation Sunex itself records (§13.3).
+- **Agents see less than their humans.** The registry's field-group ceiling (§13.1) keeps CPF,
+  salary and afastamento motives away from model providers unless an admin widens it.
 - **Health data minimization.** No diagnosis or CID; motive codes only behind `absence_details`.
 - **Secrets.** Webhook secrets and OAuth client secrets are encrypted at rest; rotation is
   supported without downtime.
@@ -915,7 +943,7 @@ enough to review in one sitting and marks which rows can run in parallel worktre
 | 6 | Approvals and movements | Approval engine with segregation of duties; movement framework and change types; admission with readiness checklist; termination | a salary change goes manager → HR and lands as a version; SoD constraints proven |
 | 7 | Outbound events | eSocial deadline service; outbox and relay, signed webhooks with retries and rotation, eSocial-shaped CSV | a test receiver verifies signatures; CSV equals the webhook payloads; every rulebook deadline example passes |
 | 8 | Absence | Rulebook in the repo; rules engine; PA chain and ledger; férias requests and approval; faltas; afastamentos with illness episodes and the 15-day threshold; family leaves from effective-dated rules, including truncation of férias | every rulebook example case is a passing dataset row |
-| 9 | Agent platform | Registry, agent principal, tool gateway and audit, runtime seam on laravel/ai; MCP server with OAuth and the audience check | parity test passes; audit rolls back with a failed domain write |
+| 9 | Agent platform | Registry, agent principal, tool gateway and audit, runtime seam on laravel/ai; MCP server with OAuth and the audience check | parity test passes; a failed domain write rolls back its diff and leaves a `failed` audit row |
 | 10 | v1 agents | Policy and balance Q&A; férias drafting agent | golden-set evals recorded; demo path works with a faked model |
 | 11 | Demo and release | One-command setup with a seeded demo group, browser test of the demo path, docs pass, v1.0.0 | the brief's observable success criterion holds |
 

@@ -59,6 +59,7 @@ its rights are bounded by a human's, and the rule is enforced once.
 | `sponsor_user_id` | The human accountable for its actions; required, never null |
 | `mode` | `on_behalf_of`: acts for the user who invoked it; `autonomous`: acts with its own grants, bounded by the sponsor's rights |
 | `scopes` | Capabilities from ADR-0006 the agent may use (for example `employees.view`, `absence.request`); approval capabilities are human-only and can never be scopes |
+| `field_groups` | Ceiling on the field groups the agent may receive, default `basic`; widening it is an explicit, audited admin action, because tool results leave Sunex for a model provider or an external assistant |
 | `status` | `pending` (an MCP client that registered itself and has no owner, sponsor or scopes yet), `active`, `suspended` or `revoked`; only `active` agents pass the gateway |
 | credential | MCP clients: a Passport OAuth client issuing short-lived tokens; in-app agents have none (they run in-process) |
 | `created_at`, `credential_rotated_at` | Lifecycle evidence |
@@ -66,11 +67,15 @@ its rights are bounded by a human's, and the rule is enforced once.
 **Effective rights** = the agent's scopes ∩ the rights of the human it acts for (the invoking user
 in `on_behalf_of` mode, the sponsor in `autonomous` mode) ∩ the sponsor's rights, so even an
 on-behalf-of call never exceeds what the sponsor could do; evaluated **as of a date** by the same
-`Authorizer::decide()` that humans use. Field-group masking applies to the intersection too.
+`Authorizer::decide()` that humans use. Field-group masking applies to the intersection too, and
+the agent's own `field_groups` ceiling is intersected with it.
 
-**Lifecycle tied to employment.** When a termination is recorded on the sponsor's
-employment, the Agents context listens to the domain event and suspends every agent that person
-sponsors until an administrator transfers sponsorship. No orphaned agents.
+**Lifecycle tied to the sponsor.** The gateway fails closed: it refuses every call unless the
+sponsor and the acting user each hold a role (derived or assigned) valid today, which also covers
+sponsors with no employment (HR admins, consultants) and disabled accounts. For prompt suspension,
+the Agents context listens for a termination recorded on the sponsor's employment and for the end
+of the sponsor's last role assignment, and suspends every agent that person sponsors until an
+administrator transfers sponsorship. No orphaned agents.
 
 **One toolset, one gateway.** Each capability is one `Laravel\Mcp\Server\Tool` class. In-app agents
 return the same classes from `tools()`, filtered by scopes; the MCP server registers them. Each
@@ -87,18 +92,21 @@ tool's `handle()` only builds input and calls `AgentToolGateway`, which runs:
    approval request id, before/after diff, result status;
 7. commit.
 
-Denied calls are audited too, in their own transaction. Filtering the tool list per agent
+Denied calls, and allowed calls whose domain write fails, are audited in their own transaction
+without a diff. Filtering the tool list per agent
 (`withTools`, `shouldRegister`, searchable catalogs) is a convenience for the model's context
 window, never the enforcement: **a search result is never a capability grant**.
 
 **Human approval in v1.** Agents never hold an approve capability. Write tools create drafts or
 submit requests (for example a férias request in `submitted`), which a human approves in the domain
-workflow. The audit row links that approval's id.
+workflow. The audit row links that approval's id. Submitting needs the human's confirmation
+recorded by Sunex: the in-app pause records it, and in v1 the MCP channel may draft but not
+submit.
 
 ### Consequences
 
 - Good, because every row in `agent_tool_calls` answers who acted, for whom, under which policy
-  decision, and what changed, and the row exists if and only if the change committed.
+  decision, and what changed, and a row with a diff exists if and only if the change committed.
 - Good, because the in-app path and the MCP path cannot diverge: a parity test calls the same tool
   through both and compares decisions and audit rows.
 - Good, because agent access shrinks automatically when the human's access shrinks (role change,
@@ -116,8 +124,12 @@ workflow. The audit row links that approval's id.
 - Pest architecture test: classes under `App\Domain\Agents\Tools` extend `Laravel\Mcp\Server\Tool`
   and use no Eloquent model from another context; they depend only on the gateway and contracts.
 - Feature tests: denied call writes an audit row and returns no data; a failed domain write rolls
-  back its audit row; a suspended agent is refused; terminating a sponsor suspends their agents;
-  masked fields are absent from tool output.
+  back its diff and leaves a `failed` row; a suspended agent is refused; terminating a sponsor
+  suspends their agents; a sponsor with no employment and no role valid today is refused; masked
+  fields are absent from tool output, and an HR admin acting through an agent with the default
+  ceiling receives no CPF.
+- Parity test: `SubmitVacationRequest` through the MCP server is refused with
+  `human_confirmation_required`.
 - Parity test: the same tool through an in-app agent (`Agent::fake()`) and through the MCP server
   test client produces the same decision and an equivalent audit row.
 
