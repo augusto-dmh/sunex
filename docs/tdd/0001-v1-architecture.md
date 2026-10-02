@@ -169,6 +169,7 @@ CREATE TABLE employment_versions (
     salary_unit           text NOT NULL,                  -- hour, day, week, fortnight, month, task
     weekly_hours          numeric(4,2) NOT NULL,
     schedule_description  text NOT NULL,
+    weekly_rest_day       smallint NULL,                  -- ISO weekday; NULL = the establishment's
     cost_centre_code      text NULL,
     contract_type         text NOT NULL,                  -- indeterminate | fixed_term
     contract_end_date     date NULL,                      -- required when fixed_term
@@ -307,8 +308,8 @@ deadlines in different directions:
 | Event | Deadline | Non-business last day |
 |---|---|---|
 | S-2200 (E-02) | the day before work starts | — |
-| S-2206 (E-03) | the 15th of the month after the change | moved **later** |
-| S-2230 (E-04) | by case: férias before the start; illness and accidents by the 15th of the next month or around day 16, per the MOS cases | moved **later** |
+| S-2206 (E-03) | the 15th of the month after the change (earlier when the change affects that month's payroll totals, which payroll knows; E-03 a); a fixed-term extension defined in days, by the next business day (E-03 b) | moved **later** |
+| S-2230 (E-04) | by case: (a) work accident or work illness of up to 15 days, the 15th of the next month; (b) accident or illness over 15 days, the 16th day away; (c) same-cause spells within 60 days that add up to more than 15 days, the day the 16th day is reached; (d) a relapse within 60 days of the return from a benefit, the first day of the new spell; (f) every other motive, férias (15) and maternity included, the 15th of the next month; (g) end events, the 15th of the month after the return. E-06's "férias may be sent from 60 days before the start" is a send window, not a deadline | moved **later** |
 | S-2299 (E-05) | 10 days after the termination, the termination day excluded | moved **earlier** |
 
 Each outbound message carries its computed `esocial_deadline`, and dashboards sort by it.
@@ -357,7 +358,7 @@ its approval flow and the outbound event family it produces.
 | `transfer` | org unit, position, establishment, manager | manager → HR | `employment.changed` |
 | `promotion` | position, CBO, salary | manager → HR | `employment.changed` |
 | `salary_change` | salary amount or unit | manager → HR | `employment.changed` |
-| `schedule_change` | weekly hours, schedule | manager → HR | `employment.changed` |
+| `schedule_change` | weekly hours, schedule, weekly rest day | manager → HR | `employment.changed` |
 | `manager_change` | manager | HR | `employment.changed` |
 | `cost_centre_change` | cost centre | HR | `employment.changed` |
 | `termination` | closes the employment on a date with a reason code | HR | `employment.terminated` (S-2299 shape) |
@@ -388,11 +389,11 @@ in test datasets.
 
 | Table | Columns | Constraints |
 |---|---|---|
-| `acquisition_periods` (períodos aquisitivos) | `employment_id`, `previous_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (running, completed, lost, paused), `lost_reason` (art133_ii, art133_iii, art133_iv), `paused_days`, `entitlement_days` (set when the PA completes) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)`; unique `previous_id` |
+| `acquisition_periods` (períodos aquisitivos) | `employment_id`, `previous_id`, `period daterange` (PA), `concession_period daterange` (PC), `status` (running, completed, lost, paused, superseded), `lost_reason` (art133_ii, art133_iii, art133_iv), `paused_days`, `entitlement_days` (set when the PA completes) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&)`; unique `previous_id` |
 | `absence_records` | `employment_id`, `kind` (falta, afastamento, ferias), `period daterange`, `esocial_reason_code` (Tabela 18; 15 for férias; null for faltas), `counts_as_falta` (bool), `justified_by_employer` (bool), `illness_episode_id` (nullable), `document_ref` (nullable), `source_type`, `source_id`, `active` (bool) | `EXCLUDE USING gist (employment_id WITH =, period WITH &&) WHERE (active)`: one person cannot be in two absences on the same day |
 | `illness_episodes` | `employment_id`, `reason_code` (01 or 03), `employer_days_used` (0–15), `inss_from` (nullable), `last_spell_end` | one open episode per employment and reason |
 | `leave_type_rules` | `esocial_reason_code`, `duration_days`, `funding` (employer, inss, employer_reimbursed), `valid_period daterange`, `condition` (nullable, e.g. the 2029 fiscal target), `requires_empresa_cidada` | exclusion constraint on `(esocial_reason_code, valid_period)` |
-| `vacation_requests` | `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `split_consent_at`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date` | |
+| `vacation_requests` | `employment_id`, `acquisition_period_id`, `status` (draft, submitted, approved, rejected, cancelled, taken), `abono_days`, `abono_requested_on`, `abono_requested_by_user_id`, `split_consent_at`, `split_consent_by_user_id`, `requested_by_user_id`, `requested_via_agent_id`, `approval_request_id`, `notice_date`, `notice_acknowledged_at` | |
 | `vacation_request_periods` | `vacation_request_id`, `period daterange`, `days`, `truncated_at` (nullable) | up to three per request |
 | `leave_ledger_entries` | `acquisition_period_id`, `kind` (entitlement, enjoyment, abono, adjustment, reversal), `days` (signed), `source_type`, `source_id`, `recorded_at`, `recorded_by` | append-only; balance = sum |
 
@@ -412,8 +413,11 @@ Three design points come from the rulebook and change what earlier research assu
    transaction. Any other overlap is rejected and returned to HR as a conflict.
 3. **Leave durations are effective-dated rules**, not constants. Licença-paternidade is 5 days
    paid by the employer and not reported to eSocial until 2026-12-31 (A-13); from 2027-01-01 it is
-   an S-2230 afastamento (codes 46–52) of 10 days funded by the INSS, 15 from 2028 and 20 from
-   2029 if the fiscal condition is met (A-14). Maternity is 120 days (A-08) with its extensions
+   an S-2230 afastamento with code 46 of 10 days, 15 from 2028 and 20 from 2029 if the fiscal
+   condition is met, paid as salário-paternidade (the employer pays and the INSS reimburses:
+   `funding = employer_reimbursed`). Codes 47–52 are its extensions and equivalences (Empresa
+   Cidadã, survivor or adoption, medical extension, one third more for a child with disability,
+   equal to maternity), one `leave_type_rules` row each (A-14). Maternity is 120 days (A-08) with its extensions
    (codes 18, 35, 43). The rule in force on the event date applies; the Empresa Cidadã extensions
    need `companies.empresa_cidada`.
 
@@ -429,12 +433,12 @@ its outputs are entitlement, balance and a list of violations with stable codes.
 | F-02, F-03 | Entitlement 30/24/18/12 by unjustified absences (faltas) dated inside the PA; 33 or more returns 0 with `art130_over_32` and asks HR to confirm; absences are never deducted from the férias period |
 | F-04, F-05 | Only `absence_records` with `counts_as_falta = true` count; the art. 473 catalogue is the default configuration |
 | F-08, F-09, F-10 | Paid leave over 30 days, or INSS-paid days over 180 inside the PA (spells summed, afastamentos crossing a PA boundary split), mark the PA lost; a new PA starts on the return date |
-| F-11, F-15 | Requests must fall inside the PC; days after the PC end raise `ferias_em_dobro_risk`; a warning appears 60 days before the PC end when days are unscheduled |
+| F-11, F-15 | No requested day may fall inside the PA itself (`inside_periodo_aquisitivo`, U-06); days after the PC end are allowed and raise `ferias_em_dobro_risk`; a warning (`concessivo_expiring`) appears from 60 days before the PC end while days are unscheduled |
 | F-12 | Up to three periods with recorded consent; one ≥ 14 days, the others ≥ 5; feasibility checked against periods already approved for the same PA |
-| F-13 | No period starts in the two days before a holiday or the employee's weekly rest day (per establishment) |
-| F-14 | Approval at least 30 days before each period starts; the approval date is the notice date |
+| F-13 | No period starts in the two days before a holiday or the employee's weekly rest day (the version's `weekly_rest_day`, defaulting to the establishment's; the `Calendar` given to the rules is built per employment as of each period's start). Rotating schedules without a fixed rest weekday are out of v1 |
+| F-14 | Approval at least 30 days before each period starts; approval sends the employee the written aviso de férias and sets `notice_date`, and the employee's acknowledgement is the recibo art. 135 asks for (`notice_acknowledged_at`). Treating approval as the moment of notice is an interpretation, listed with the rulebook's |
 | F-16 | `payment_due_on = start − 2 days` is part of the férias event payload |
-| F-17 | Abono up to one third of the entitlement, requested at least 15 days before the PA ends; a late request needs HR consent |
+| F-17 | Abono is exactly one third of the entitlement or none (U-07; art. 143 "converter 1/3"), requested at least 15 days before the PA ends; a late request is flagged `abono_late_needs_employer_consent` |
 | A-01 to A-05 | The 15 employer-paid days belong to an **illness episode**: spells of the same cause within 60 days add up, so a relapse may move straight to the INSS (see §9.4) |
 | A-08 to A-14 | Family leave durations come from `leave_type_rules` as of the event date |
 
@@ -448,7 +452,11 @@ and surface in the UI as "calculated by Sunex; payroll is the system of record".
 1. The scheduler extends the PA chain: it completes a PA on its last day (writing the entitlement
    to the ledger, `kind = entitlement`) and opens the next one.
 2. An employee, a manager for a report, or the drafting agent creates a **draft** request; the
-   rules run on every edit and return violations.
+   rules run on every edit and return violations. Split consent (art. 134 §1) and the abono request
+   (art. 143) are the employee's acts: they are recorded only when the principal is the employee,
+   or an `on_behalf_of` agent acting for them after a confirmation that names the split and the
+   abono. A request a manager drafted with either waits for the employee's confirmation before it
+   can be submitted.
 3. **Submit** opens an approval request (`manager_of_subject`).
 4. **Approve** (≥ 30 days before start, F-14) writes the `absence_records` rows, debits the ledger
    (enjoyment and abono), records the audit entry and the outbox message `vacation.scheduled`,
@@ -456,6 +464,14 @@ and surface in the UI as "calculated by Sunex; payroll is the system of record".
    from the PA chain), which eSocial accepts up to 60 days ahead (E-06).
 5. Cancelling an approved request reverses the ledger entries and deactivates the absence rows
    (`vacation.cancelled`); a truncation (§9.1) returns only the unused days.
+6. **Late records.** Recording or changing a falta or afastamento dated inside a completed PA
+   re-runs the rules for that PA and every later one, in the same transaction. Entitlement
+   differences post as `adjustment` entries. A PA that becomes lost (F-08 to F-10) gets status
+   `lost`, and the later chain is derived again as new rows: the replaced rows become `superseded`
+   and their ledger balances move to the new rows through reversal entries. Approved or taken
+   férias whose `perAquis` changed raise an HR task and `vacation.updated`; rectifying what payroll
+   already sent is payroll's decision
+   ([ADR-0009](../adr/0009-no-payroll-no-esocial-transmission.md)).
 
 ### 9.4 Afastamentos
 
