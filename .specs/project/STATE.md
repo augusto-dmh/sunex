@@ -57,6 +57,20 @@ it.
 | AD-028 | Splitting afastamentos | (a) One row for every afastamento type: not, L+ with maternity, paternity and their 2027 changes. (b) Illness and leave in row 28; family leaves with effective-dated rules and férias truncation in row 37 | **(b)** |
 | AD-029 | Numbering rows added after the first cut | (a) Renumber every row: not, links and references break. (b) Row numbers are stable ids; new rows take the next free number and their wave says when they run | **(b)** |
 
+### Decisions taken while triaging the foundation review (2026-10-02)
+
+The full finding-by-finding record is `.specs/features/foundation-docs/review-triage.md`.
+
+| ID | Decision | Options (why yes / why not) | Choice and rationale |
+|---|---|---|---|
+| AD-030 | Which date access is decided on | (a) The caller's `asOf`: yes, one parameter serves history screens; not, a picked past or future date reopens or anticipates reach. (b) Always today; the picked date only selects the slice shown; a separate audit query answers "who could see X on D": yes, closes both leaks; not, one more method | **(b)**, `Authorizer::couldSee` gated by `audit.view`; an arch test keeps request input away from `asOf` |
+| AD-031 | Employee confirmation on the MCP path | (a) Trust the MCP client to ask the human: not, Sunex cannot see or record it. (b) A one-time confirmation token issued by Sunex's UI: yes, works on every channel; not, a new protocol for one tool in v1. (c) MCP may draft but not submit; the reply links the draft for the employee to submit in Sunex: yes, smallest change that keeps the no-go; not, one extra click on MCP | **(c)** in v1; (b) stays open for v1.1 |
+| AD-032 | Field groups an agent may receive | (a) The human ∩ sponsor set: not, sends CPF, salary and motive codes to a model provider whenever an HR admin uses an agent. (b) A per-agent ceiling, default `basic`, widened by an audited admin action: yes, LGPD-minded and the v1 agents need nothing more; not, one more column | **(b)** |
+| AD-033 | eSocial exports for a principal without `identifiers` | (a) Mask the columns: not, an S-2200-shaped file without `cpfTrab` is useless. (b) Bypass masking for exports: not, breaks ADR-0006. (c) Grant `esocial.export` only together with `identifiers` and `compensation`, and constrain rows by reach: yes, consistent with the policy function | **(c)** |
+| AD-034 | Row 01 and the start of row 02 shipped inside F2 | (a) Keep both rows as written: not, they would redo merged work. (b) Mark row 01 delivered by F2 and cut row 02 to what F2 left (route files, the remaining arch rules, the coverage gate) | **(b)**; README, CONTRIBUTING and the agent guide describe F2's gate names, so F2 merges before or with F1 |
+| AD-035 | Where the weekly rest day of F-13 lives | (a) Establishment only: not, the rulebook has a case with a Wednesday rest day. (b) A nullable `weekly_rest_day` on the version, defaulting to the establishment's: yes, dated like other contract terms. (c) Full schedules: not, out of v1 | **(b)**; rotating schedules stay out of v1 |
+| AD-036 | Row 12 (`org-units-positions`) holds about two rows of work | (a) Split holidays and the calendar into a new row: yes, smaller PRs; not, a new node and dependency edge for about a day of work. (b) Relabel it L: yes, within the size rule | **(b)** |
+
 ## Blockers
 
 None for the next rows. Items only the owner can do:
