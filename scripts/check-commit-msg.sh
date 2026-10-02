@@ -22,7 +22,8 @@ length=$(printf '%s' "$header" | LC_ALL=C.UTF-8 wc -m | tr -d ' ')
 if [ "$length" -gt 72 ]; then
   echo "commit header is $length characters, the limit is 72: $header" >&2; exit 1
 fi
-if ! printf '%s' "$header" | grep -Eq "^($types)(\(($scopes)\))?!?: [a-z0-9]"; then
+# LC_ALL=C pins [a-z] to ASCII; in some locales the range also matches accented letters.
+if ! printf '%s' "$header" | LC_ALL=C grep -Eq "^($types)(\(($scopes)\))?!?: [a-z0-9]"; then
   echo "commit header must be '<type>(<scope>): <lowercase summary>': $header" >&2
   echo "  types:  $types" >&2
   echo "  scopes: $scopes (optional)" >&2
