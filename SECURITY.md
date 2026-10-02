@@ -34,10 +34,13 @@ Reporters are credited in the advisory unless they ask not to be.
 
 In scope: the application in this repository, including authorization (roles, reach, field-group
 masking), agent principals and their tool gateway, the MCP server and its OAuth flow, webhook
-signing, and data exports.
+signing, and data exports. Escalation by a company-scoped administrator is in scope too: reaching
+another company's data, gaining `all_companies` reach, reaching the host's network (for example
+through a webhook URL), or giving an agent more than its sponsor has.
 
-Out of scope: denial of service by volume, findings that need a compromised administrator account,
-missing hardening headers without a demonstrated impact, and third-party services.
+Out of scope: denial of service by volume, findings that need the installation operator's account
+or an `all_companies` administrator's account, missing hardening headers without a demonstrated
+impact, and third-party services.
 
 ## Design commitments
 
