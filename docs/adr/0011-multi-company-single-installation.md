@@ -45,7 +45,10 @@ The design:
 - Every company-owned row carries `company_id` (org units, positions, employments, movements,
   absences, webhook subscriptions, policy documents).
 - `persons` are global and identified by CPF. A person may hold employments in several companies;
-  matrícula is unique per company.
+  matrícula is unique per company. A person is reached only through an employment the principal
+  reaches, and person fields are shown under that employment's grant. The admission form's CPF
+  check answers only whether the person already exists, pre-fills nothing from an employment the
+  principal does not reach, and is audited.
 - Access is decided by the `company` and `all_companies` reaches of the policy function
   ([ADR-0006](0006-permission-model-roles-reach-field-groups.md)); role assignments are
   company-scoped.
@@ -74,7 +77,8 @@ The design:
 - Every company-owned table has a non-null `company_id` with a foreign key; a schema test lists
   tables without it and compares them to an allow-list (global tables such as `persons`).
 - A feature test seeds two companies and, for each list screen, export and agent tool, asserts that
-  an HR analyst of company A never receives a row of company B.
+  an HR analyst of company A never receives a row of company B, including the person data of
+  someone employed by both.
 - An architecture test forbids raw `DB::table()` queries on company-owned tables outside
   `app/Http/Queries` and the owning context.
 - Value-object tests cover valid and invalid CNPJ check digits in both formats.

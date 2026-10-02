@@ -607,9 +607,28 @@ final readonly class Decision
 an employment, a person, a company-level resource or a request, with its company. `asOf` defaults
 to today in the business time zone.
 
+**Access is always decided as of today.** Entry points never pass a date taken from the request.
+A screen that shows another slice of time ("effective on", "known at", "as of D") decides access as
+of today and only then reads that slice, so a former manager does not regain a former report by
+picking a past date, and the future manager of a future-dated transfer gets nothing before its
+effective date. An explicit `asOf` is for the scheduler and the planner. The audit question "who
+could see this person on date D" is a separate method, `Authorizer::couldSee(principal, subject,
+on)`, gated by `audit.view`. An architecture test forbids request input from reaching `asOf`.
+
+**Person subjects.** A person is global (§7.1), so a person is reached only through an employment
+the principal reaches, and the person's fields are shown under that employment's grant. HR of
+company A never sees a shared person's data through the person's employment in company B
+([ADR-0011](../adr/0011-multi-company-single-installation.md)).
+
 Every entry point calls it: Laravel policies delegate to it; Inertia props and exports pass
 through one `FieldMask` serializer driven by `Decision::$visible`; the agent tool gateway calls it
 before every tool; `scope()` turns reach into a SQL subquery so list screens never filter in PHP.
+
+On a list, visible field groups are decided **per row**: a row's visible set is the union over the
+grants that reach that row, never over all of the principal's grants. An HR analyst for one org
+unit who is also a derived Employee sees their own CPF, not the CPF of everyone in the unit.
+`FieldMask::forRows(principal, capability, rows)` resolves the set per subject from the memoized
+reach sets.
 
 ### 12.2 Capabilities, roles and reach
 
@@ -621,7 +640,7 @@ per company with a `valid_period`.
 | Role | Kind | Reach | Main capabilities | Field groups |
 |---|---|---|---|---|
 | Employee | derived (has an active employment) | self | `employees.view`, `absence.request`, `agents.use` | all of their own |
-| Manager | derived (is the manager in someone's version) | manager chain | `employees.view`, `movements.request`, `movements.approve`, `absence.approve` | basic, contact (absence dates without motive codes) |
+| Manager | derived (holds an employment active on the date that is the manager in a version valid on the date) | manager chain | `employees.view`, `movements.request`, `movements.approve`, `absence.approve` | basic, contact (absence dates without motive codes) |
 | HR analyst | assigned | org unit subtree or company | the above plus `absence.record`, `employment_history.view`, `esocial.export` | all except identifiers unless granted |
 | HR admin | assigned | company | everything, including `access.manage`, `webhooks.manage`, `agents.manage`, `organization.manage`, `movements.correct` | all |
 | Auditor | assigned | company | read-only capabilities and `audit.view` | all, read-only |
@@ -633,7 +652,13 @@ the org tree. Consequences that the tests pin down:
 - A future-dated transfer gives the new manager reach on its effective date, not when approved.
 - A manager keeps seeing a former report's history only while the report is in their reach; HR
   sees history through company reach.
-- "Who could see this person on date D" is answerable, because both grants and reach are dated.
+- "Who could see this person on date D" is answerable, because both grants and reach are dated
+  (`couldSee`, §12.1).
+- A terminated manager whose reports still point at them, until a `manager_change` is approved,
+  holds no Manager role from the termination date. The `manager_of_subject` approver rule (§8.1)
+  uses the same condition and falls through to the skip-level manager or HR.
+- A user left with no active employment and no assigned role valid today has their sessions and
+  tokens revoked.
 
 Implementation: People implements `ReachResolver` with a recursive CTE over the current-belief
 versions valid on the date (`employment_versions WHERE upper_inf(recorded_period) AND valid_period
@@ -646,13 +671,17 @@ versions valid on the date (`employment_versions WHERE upper_inf(recorded_period
 |---|---|
 | `basic` | name, social name, work email, position, org unit, manager, establishment, admission date, status |
 | `contact` | personal email and phone |
-| `personal` | birth date, nationality, address |
+| `personal` | birth date, nationality, address, sex, race/colour, education level |
 | `identifiers` | CPF, matrícula, eSocial category |
 | `compensation` | salary amount and unit, cost centre |
-| `absence_details` | afastamento motive codes and document references (a manager sees only that a person is away and until when) |
+| `employment_notes` | version reason notes, termination reason code |
+| `absence_details` | afastamento motive codes, document references, the illness-episode link (the same-cause answer), `counts_as_falta` (a manager sees only that a person is away and until when) |
 
 The `FieldMask` serializer removes attributes outside the visible groups before the data reaches
-Inertia, a CSV or a tool result. Tests assert on the serialized JSON, not on the UI.
+Inertia, a CSV or a tool result. It is an **allow-list**: an attribute mapped to no group is never
+serialized, so a new column stays hidden until someone maps it, and a test fails when a model
+attribute or DTO property that reaches an output has no group. Row `field-groups-masking` completes
+the map for every column in §7–§9. Tests assert on the serialized JSON, not on the UI.
 
 ## 13. Agent principals, the tool gateway and MCP
 
@@ -805,7 +834,7 @@ becomes without it.
 | Unit (pure) | CLT rules, timeline planner, readiness checklist, identifiers (CPF, CNPJ, CBO), signature function | Pest datasets copied from the rulebook's example cases, named by rule id; the planner gets tables of before/after timelines |
 | Database | exclusion constraints, append-only trigger, check constraints, unique indexes for segregation of duties | feature tests that expect `QueryException` with the constraint name; always on PostgreSQL, never SQLite |
 | Feature | movements, approvals, férias and afastamento flows, as-of queries, outbox and relay, webhook delivery and retries (`Http::fake`), CSV snapshots, Inertia props after masking | `RefreshDatabase` on PostgreSQL, factories with states (`->onLeave()`, `->managedBy()`), travel in time through the injected clock |
-| Authorization | the decision matrix: role × reach × relationship × date → allowed and visible groups | one dataset per capability; plus a parity test that runs the same read as a human, an in-app agent and an MCP client and compares decisions and masked output |
+| Authorization | the decision matrix: role × reach × relationship × date → allowed and visible groups, including a former manager asking for a past date, the future manager of a future-dated transfer, a terminated manager not yet replaced, a list for a principal with two grants of different field groups, and a person shared by two companies | one dataset per capability; plus a parity test that runs the same read as a human, an in-app agent and an MCP client and compares decisions and masked output |
 | Architecture | context dependency rules, no models across contexts, tools only through the gateway, no role-name checks outside `Shared\Access`, strict types, no `dd`/`dump` | Pest `arch()` presets plus project rules |
 | Agents | tool behaviour without a model; agent loops with fakes; approvals | `Agent::fake()`, `preventStrayPrompts()`, `AgentResponse::fakeWithPendingApprovals()`, MCP server test assertions |
 | Evals (opt-in) | Q&A answer quality and citation faithfulness, drafting success on a golden set | Pest 5 evals with a real provider, run manually or nightly when a key is configured; never a merge gate |

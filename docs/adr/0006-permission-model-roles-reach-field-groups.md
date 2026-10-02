@@ -49,7 +49,9 @@ The design:
 - `Shared\Access\Authorizer::decide(Principal $principal, Capability $capability, Subject $subject,
   ?Date $asOf = null): Decision`, where `Decision` is `{allowed, reasons, visible, matchedGrants}`
   (`visible` is the set of visible field groups).
-  `asOf` defaults to today.
+  `asOf` defaults to today, and access decisions always use today: a date a user picks chooses
+  which slice a screen shows, never the date access is decided on. "Who could see X on D" is a
+  separate audit query gated by `audit.view`.
 - `Capability` is a PHP enum (`employees.view`, `movements.request`, `movements.approve`,
   `absence.request`, `absence.approve`, `esocial.export`, `webhooks.manage`, `agents.manage`…).
 - Roles grant capabilities. Role assignments are small Sunex-owned tables, **company-scoped and
@@ -62,9 +64,10 @@ The design:
   recursive query over versions valid on the date, org-unit subtree through Organization's
   `OrgTree`). Shared never depends on People.
 - Each grant lists **field groups**: `basic`, `contact`, `personal`, `identifiers`,
-  `compensation`, `absence_details`. One server-side serializer applies `visible` to
-  every output: Inertia props, exports and the agent tool gateway. Masked fields are absent, not
-  hidden by the frontend.
+  `compensation`, `employment_notes`, `absence_details`. One server-side serializer applies
+  `visible` to every output: Inertia props, exports and the agent tool gateway. Masked fields are
+  absent, not hidden by the frontend. The serializer is an allow-list (an attribute in no group is
+  never serialized), and on a list each row gets the union of the grants that reach that row.
 - Laravel policies are thin and delegate to the `Authorizer`. Agents and MCP clients reach the
   same function through the tool gateway, where an agent's rights are its scopes intersected with
   the rights of the human it acts for ([ADR-0007](0007-agents-as-principals-one-toolset.md)).
