@@ -1,0 +1,27 @@
+# Local services for development and tests. Start with `docker compose up -d`.
+# Postgres listens on host port 54329 so it does not clash with other projects, and
+# only on loopback: the password is committed, and Docker's port rules bypass host firewalls.
+name: sunex
+
+services:
+    pgsql:
+        image: pgvector/pgvector:0.8.1-pg17
+        ports:
+            - '127.0.0.1:${FORWARD_DB_PORT:-54329}:5432'
+        environment:
+            POSTGRES_DB: '${DB_DATABASE:-sunex}'
+            POSTGRES_USER: '${DB_USERNAME:-sunex}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:-secret}'
+            TESTING_DB_DATABASE: '${TESTING_DB_DATABASE:-sunex_testing}'
+        volumes:
+            - pgsql-data:/var/lib/postgresql/data
+            - ./scripts/postgres/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh:ro
+        healthcheck:
+            # Over TCP: the image's first-run init server listens only on the socket.
+            test: pg_isready -q -h 127.0.0.1 -d "$$POSTGRES_DB" -U "$$POSTGRES_USER"
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+volumes:
+    pgsql-data:

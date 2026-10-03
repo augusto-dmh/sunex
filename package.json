@@ -1,6 +1,8 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "sunex",
     "private": true,
+    "license": "AGPL-3.0-only",
     "type": "module",
     "scripts": {
         "build": "vp build",

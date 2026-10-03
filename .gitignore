@@ -11,6 +11,8 @@
 /resources/js/routes
 /resources/js/wayfinder
 /vendor
+/.worktrees
+/phpstan.neon
 .DS_Store
 .env
 .env.backup
@@ -27,18 +29,21 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# AI agents. Tracked: what makes every contributor's agent behave the same
+# (Boost guidelines in AGENTS.md and CLAUDE.md, boost.json to regenerate them,
+# the Boost MCP server in .mcp.json, the project's Claude Code settings and
+# skills). Ignored: per-person settings and other agents' generated copies.
 /.agents
 /.amp
-/.claude
+/.claude/*
+!/.claude/settings.json
+!/.claude/skills/
 /.cursor
 /.factory
 /.grok
 /.junie
 /.kiro
 /.pi
-/.mcp.json
-/AGENTS.md
-/CLAUDE.md
-/boost.json
 /opencode.json
 /opencode.jsonc

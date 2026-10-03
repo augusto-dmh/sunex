@@ -1,15 +1,18 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/vue-starter-kit",
+    "name": "augusto-dmh/sunex",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "People management for Brazilian companies: dated employment history, CLT férias and afastamentos, and AI agents you can audit.",
     "keywords": [
         "laravel",
-        "framework"
+        "hr",
+        "people-management",
+        "clt",
+        "esocial"
     ],
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "require": {
-        "php": "^8.3",
+        "php": "^8.4",
         "inertiajs/inertia-laravel": "^3.0",
         "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
@@ -18,6 +21,7 @@
         "laravel/wayfinder": "^0.1.14"
     },
     "require-dev": {
+        "driftingly/rector-laravel": "^2.6",
         "fakerphp/faker": "^1.24",
         "larastan/larastan": "^3.9",
         "laravel/boost": "^2.2",
@@ -28,7 +32,8 @@
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.9.3",
         "pestphp/pest": "^5.3",
-        "pestphp/pest-plugin-laravel": "^5.0"
+        "pestphp/pest-plugin-laravel": "^5.0",
+        "rector/rector": "^2.6"
     },
     "autoload": {
         "psr-4": {
@@ -47,6 +52,7 @@
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
+            "docker compose up -d --wait",
             "@php artisan migrate --force",
             "npm install",
             "npm run build"
@@ -56,25 +62,42 @@
             "@php artisan dev"
         ],
         "lint": [
-            "pint --parallel"
-        ],
-        "lint:check": [
+            "Composer\\Config::disableProcessTimeout",
             "pint --parallel --test"
         ],
-        "ci:check": [
-            "Composer\\Config::disableProcessTimeout",
-            "npm run check",
-            "npm run types:check",
-            "@test"
+        "lint:fix": [
+            "pint --parallel"
         ],
-        "types:check": [
-            "phpstan analyse"
+        "analyse": [
+            "Composer\\Config::disableProcessTimeout",
+            "phpstan analyse --no-progress"
+        ],
+        "refactor-check": [
+            "Composer\\Config::disableProcessTimeout",
+            "rector process --dry-run --no-progress-bar"
+        ],
+        "refactor": [
+            "rector process"
         ],
         "test": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi",
-            "@lint:check",
-            "@types:check",
             "@php artisan test"
+        ],
+        "frontend-check": [
+            "Composer\\Config::disableProcessTimeout",
+            "@php artisan wayfinder:generate --with-form --ansi",
+            "npm run check -- resources",
+            "npm run types:check",
+            "npm run build"
+        ],
+        "check": [
+            "Composer\\Config::disableProcessTimeout",
+            "@lint",
+            "@analyse",
+            "@refactor-check",
+            "@test",
+            "@frontend-check"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
@@ -89,12 +112,22 @@
         ],
         "post-create-project-cmd": [
             "@php artisan key:generate --ansi",
-            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan migrate --graceful --ansi"
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
         ]
+    },
+    "scripts-descriptions": {
+        "setup": "Install dependencies, start PostgreSQL, migrate and build the frontend",
+        "lint": "Check PHP code style with Pint (no changes)",
+        "lint:fix": "Fix PHP code style with Pint",
+        "analyse": "Run Larastan static analysis",
+        "refactor-check": "Check that Rector has nothing to change (dry run)",
+        "refactor": "Apply Rector refactorings",
+        "test": "Run the Pest suite (unit, feature and architecture) on PostgreSQL",
+        "frontend-check": "Lint, type-check and build the frontend",
+        "check": "Run every quality gate, as CI does"
     },
     "extra": {
         "laravel": {
