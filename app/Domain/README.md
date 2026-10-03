@@ -3,6 +3,7 @@
 Business rules live here, one namespace per bounded context (`App\Domain\<Context>`).
 [ARCHITECTURE.md](../../ARCHITECTURE.md) is the map and
 [ADR-0004](../../docs/adr/0004-domain-namespaces-with-architecture-tests.md) the reasoning.
+Where this summary and ARCHITECTURE.md disagree, ARCHITECTURE.md wins.
 
 | Context                                | Owns                                                         | May depend on                |
 | -------------------------------------- | ------------------------------------------------------------ | ---------------------------- |
