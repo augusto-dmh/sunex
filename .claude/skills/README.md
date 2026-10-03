@@ -6,9 +6,9 @@ Sunex keeps the skills its delivery process depends on inside the repository, so
 
 | Skill | Origin | Licence | Notes |
 |---|---|---|---|
-| `sunex-ship-cycle` | Written for Sunex, adapted from the owner's ship-cycle process in an earlier project | AGPL-3.0 (repository licence) | Orchestrates one roadmap cycle; adds parallel cycles in git worktrees |
-| `sunex-finalize` | Written for Sunex, same origin | AGPL-3.0 | Branch, commit, clean-room and PR conventions, with validators |
-| `pr-review` | Written for Sunex, same origin | AGPL-3.0 | Seven review lanes tuned to Laravel, Inertia and the Sunex domain |
+| `sunex-ship-cycle` | Written for Sunex, adapted from the owner's ship-cycle process in an earlier project | AGPL-3.0-only (repository licence) | Orchestrates one roadmap cycle; adds parallel cycles in git worktrees |
+| `sunex-finalize` | Written for Sunex, same origin | AGPL-3.0-only | Branch, commit, clean-room and PR conventions, with validators |
+| `pr-review` | Written for Sunex, same origin | AGPL-3.0-only | Seven review lanes tuned to Laravel, Inertia and the Sunex domain |
 | `tlc-spec-driven` | Vendored verbatim from [tech-leads-club/agent-skills](https://github.com/tech-leads-club/agent-skills), commit `916a867`, version 3.3.0 | CC-BY-4.0 (text), MIT (scripts) | See `tlc-spec-driven/NOTICE.md` for attribution, the pinned tree hash and the update procedure |
 
 ## Policy

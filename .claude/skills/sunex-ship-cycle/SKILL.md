@@ -1,7 +1,7 @@
 ---
 name: sunex-ship-cycle
 description: 'End-to-end orchestrator for Sunex roadmap cycles: pick the next ROADMAP row (or several parallel-safe rows, each in its own git worktree), plan and build it with tlc-spec-driven while auto-deciding with recorded rationale, publish with sunex-finalize, review with pr-review in a fresh context, triage every finding against the code, fix, delete the review comments, land decisions and lessons under a merge lock, and merge when the ship report is clean. Use when asked to "ship the next PR", "run the ship cycle", "ship rows X and Y in parallel", or to resume a cycle after an interruption ("continue"). Not for ad-hoc edits, standalone reviews (pr-review) or publishing only (sunex-finalize).'
-license: AGPL-3.0
+license: AGPL-3.0-only
 metadata:
   author: Sunex contributors
   version: 1.0.0

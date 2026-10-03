@@ -1,7 +1,7 @@
 ---
 name: sunex-finalize
 description: 'Publishes finished Sunex work: branch name, atomic Conventional Commits with the Assisted-by trailer, gate run, clean-room check, push, and a pull request whose body follows the repository template. Use when asked to finalize, commit, push, open or update a pull request, or write a PR description for Sunex. Not for implementing features, reviewing a PR (use pr-review) or running a whole roadmap cycle (use sunex-ship-cycle, which calls this skill).'
-license: AGPL-3.0
+license: AGPL-3.0-only
 metadata:
   author: Sunex contributors
   version: 1.0.0
