@@ -38,7 +38,7 @@ Duplicates: 9 and 17 (meaning of `composer test`); 11 and R1 (scope list); 10 an
 | 3 | data | `database/migrations/2026_10_02_000000_enable_postgres_extensions.php:18` | `create extension vector` needs a superuser | Real | **Fix (docblock).** `vector` is not marked trusted; a least-privilege migrating role fails. One docblock line says who must create it; install docs come with the self-hosting docs. |
 | 4 | architecture | `tests/Arch/DomainBoundariesTest.php:50` | The rule blocks Shared's documented public surface | Real | **Fix.** ARCHITECTURE calls Shared a shared kernel and names `Authorizer`, `ApprovalEngine`, `Outbox` and value objects as its surface; TDD-0001 places them in `Shared\Access`, `Approvals`, `Audit`, `Identifiers`, `Integration`, `Time`. Options: (a) open all of `Shared`: simplest, but nothing in Shared stays private; (b) allow the documented namespaces besides `Contracts`/`Events`: matches the docs, keeps anything else private; (c) move the surface under `Shared\Contracts`: rewrites TDD and ARCHITECTURE in PR #2 for no gain. **(b).** Follow-up for PR #2: rule 1 in ARCHITECTURE should name the shared-kernel exception. |
 | 5 | architecture | `tests/Arch/DomainBoundariesTest.php:22` | Delivery ban misses HTTP helpers, `Foundation\Http`, HTTP facades, `App\Console` | Real | **Fix.** `toUse` matches prefixes and records global functions by name, so `request()`, `FormRequest` and `Facades\Request` pass today. Add them, `to_route`, and `App\Console` (ARCHITECTURE lists it as delivery). Probed with a throwaway class. |
-| 6 | architecture | `tests/Arch/PresetsTest.php:15` | `ignoring('App\Domain')` also lifts the `dd`/`env`/`exit` ban and the "own folder" rules | Real | **Fix.** Verified in `vendor/pestphp/pest/src/ArchPresets`: `dd`, `ddd`, `env`, `exit` come only from the Laravel preset, as do the FormRequest, Command, ServiceProvider, Mailable and Notification rules. Restore them for `App\Domain` in `DomainBoundariesTest`. |
+| 6 | architecture | `tests/Arch/PresetsTest.php:15` | `ignoring('App\Domain')` also lifts the `dd`/`env`/`exit` ban and the "own folder" rules | Real | **Fix.** Verified in `vendor/pestphp/pest/src/ArchPresets`: `dd`, `ddd`, `env`, `exit` come only from the Laravel preset, as do the FormRequest, Command, ServiceProvider, Mailable and Notification rules. Restore for `App\Domain` the debug/env/exit ban and the command, service-provider and controller rules in `PresetsTest`, next to the ignore; FormRequest is covered by 5. Mailables, notifications and exceptions stay allowed: a context (approvals, for one) may own its messages. |
 | 7 | architecture | `tests/Arch/PresetsTest.php:7` | Dropping strict types contradicts TDD-0001 §15 | Real | **Fix, scoped.** The PR's reason (generated and framework code omit `strict_types`) does not apply to hand-written domain code, where scalar coercion matters for CLT rules. Options: (a) defer to row 02: row 02 does not list it, so it would need a roadmap edit; (b) require strict types in `App\Domain` only: one line, the tree has no PHP yet, so it costs nothing now; (c) strict preset everywhere: fights the generators. **(b).** Follow-up for PR #2: TDD §15 could say "strict types in `app/Domain`". |
 | 8 | architecture | `app/Domain/Absence/README.md:6` | README gives holidays to Absence; ARCHITECTURE gives them to Organization | Real | **Fix.** Absence uses the calendar Organization provides. The per-context READMEs keep one line of ownership and point to ARCHITECTURE as the source of truth; the duplication risk is accepted for the index table, which links there. |
 | 9 | architecture | `composer.json:90` | `composer test` no longer means what the guidelines say | Resolved before triage | **No change.** PR #2 commit `860b8b6` already describes `composer check` and the five gate names in CONTRIBUTING, README and the agent guidelines; ADR-0003 names `frontend-check`. |
@@ -71,6 +71,31 @@ Duplicates: 9 and 17 (meaning of `composer test`); 11 and R1 (scope list); 10 an
 | N1 | Scope beyond the row: delivers row 01 and part of 02 without saying so | Real | **Fix in the PR body:** Context names rows F2, 01 and the part of 02 it delivers, matching the roadmap on PR #2. |
 | N2 | CONTRIBUTING will be stale once this merges | Real, partly resolved | Gate names already fixed on PR #2; the scope list is the follow-up recorded under 11. |
 | N3 | `symplify/rule-doc-generator-contracts` is abandoned | Real, informational | **Won't fix:** dev-only, pulled in by `driftingly/rector-laravel`; revisit when Rector is upgraded. |
+
+## Fix commits
+
+| Finding | Commit |
+|---|---|
+| 1 | `fix(tooling): publish postgres on loopback only` |
+| 2 | `fix(tooling): probe postgres readiness over tcp` |
+| 14 | `fix(ci): keep a finished run for every merge commit on main` (grouped by PR number or commit SHA, so a third quick merge cannot drop a queued run either) |
+| 15 | `fix(ci): lift composer's process timeout from every gate script` |
+| 11, R1, 18 | `fix(ci): name the organization scope after its context` |
+| 12, 18 | `fix(ci): check trailers on merge and revert commits too` |
+| 13, 18 | `fix(ci): match the forbidden footer only at the start of a line` |
+| 4 | `test(arch): let contexts use the shared kernel's documented namespaces` |
+| 8 | `docs(organization): give holidays to organization, not absence` |
+| 5 | `test(arch): ban http helpers, facades and console from domain code` |
+| 6 | `test(arch): keep the laravel preset's bans for domain code` |
+| 7, R5 | `test(arch): require strict types in domain code` |
+| 19 | `test(arch): fail when a domain folder is missing from the table` |
+| 3 | `docs(db): say which role may enable the vector extension` |
+| 16 | `docs(auth): note the columns the two-factor factory state needs` |
+| 4–7, 19 | `docs(arch): list every rule the domain arch tests enforce` |
+
+Every new arch rule was checked against a throwaway violating class (deleted afterwards): each
+fails on its violation and passes on the clean tree. Each new commit-check row fails on the script
+as it was before its fix.
 
 ## Follow-ups for PR #2 (`docs/foundation`)
 
