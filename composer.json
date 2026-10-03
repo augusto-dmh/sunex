@@ -62,21 +62,25 @@
             "@php artisan dev"
         ],
         "lint": [
+            "Composer\\Config::disableProcessTimeout",
             "pint --parallel --test"
         ],
         "lint:fix": [
             "pint --parallel"
         ],
         "analyse": [
+            "Composer\\Config::disableProcessTimeout",
             "phpstan analyse --no-progress"
         ],
         "refactor-check": [
+            "Composer\\Config::disableProcessTimeout",
             "rector process --dry-run --no-progress-bar"
         ],
         "refactor": [
             "rector process"
         ],
         "test": [
+            "Composer\\Config::disableProcessTimeout",
             "@php artisan config:clear --ansi",
             "@php artisan test"
         ],

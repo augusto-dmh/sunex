@@ -1,5 +1,7 @@
 # Quality gates for every pull request and for main. Each job is one gate and
 # calls the composer script of the same name, so CI and `composer check` agree.
+# The scripts disable Composer's 300-second process timeout; each job's
+# timeout-minutes is the real limit.
 name: ci
 
 on:
@@ -23,6 +25,7 @@ jobs:
     name: commit messages
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +50,7 @@ jobs:
   lint:
     name: lint (pint)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,6 +73,7 @@ jobs:
   analyse:
     name: analyse (larastan)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,6 +96,7 @@ jobs:
   refactor:
     name: refactor-check (rector)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,6 +119,7 @@ jobs:
   test:
     name: test (pest on postgres)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       # Same image and host port as compose.yaml; the suite uses sunex_testing (phpunit.xml).
       pgsql:
@@ -156,6 +163,7 @@ jobs:
   frontend:
     name: frontend-check (types and build)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
