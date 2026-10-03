@@ -79,3 +79,11 @@ test('a context reaches another only when the dependency table allows it, and on
         $expectation->ignoring(array_map(fn (string $namespace): string => "App\\Domain\\{$other}\\{$namespace}", $public));
     }
 })->with(contextPairs());
+
+test('every folder under app/Domain is a context in the dependency table, and no class sits at its root', function () {
+    $domain = dirname(__DIR__, 2).'/app/Domain';
+
+    expect(array_map(basename(...), glob("{$domain}/*", GLOB_ONLYDIR) ?: []))
+        ->toEqualCanonicalizing(array_keys(DOMAIN_CONTEXTS))
+        ->and(glob("{$domain}/*.php") ?: [])->toBeEmpty();
+});
