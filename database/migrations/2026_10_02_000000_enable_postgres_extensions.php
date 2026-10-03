@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Schema;
  * - btree_gist: lets exclusion constraints mix equality on scalar columns with
  *   overlap on date ranges, so overlapping employment versions or absence periods
  *   for the same person are rejected by the database itself.
+ *
+ * btree_gist is a trusted extension, so a role with CREATE on the database can
+ * enable it. vector is not: the migrating role must be a superuser (as the
+ * Compose and CI databases' owner is), or a superuser must run
+ * `create extension vector;` beforehand in every database, the test one included.
  */
 return new class extends Migration
 {
