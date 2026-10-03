@@ -28,6 +28,7 @@ Never ask the user mid-cycle (no AskUserQuestion, no "want me to proceed?"). Sto
 - **Legal:** a licence that may be incompatible with AGPL-3.0, trademark or IP questions, a legal reading of CLT or LGPD that the cited primary source does not settle and the code cannot carry as a stated assumption.
 - **No conforming option:** every defensible option contradicts a recorded owner decision.
 - **Missing clean-room term list:** the clean-room check fails closed without it.
+- **Clean-room hit in published work:** a forbidden term in anything already pushed or posted. Rewriting history does not unpublish it; report where it is (commits, PR) so the owner can have GitHub purge it.
 - **Verifier FAIL** after the bounded fix loop (three iterations), and a dirty ship report in `auto` mode.
 
 Everything else is decided, recorded and continued.
