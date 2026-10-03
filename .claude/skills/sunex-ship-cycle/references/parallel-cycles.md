@@ -2,6 +2,8 @@
 
 Several roadmap rows can ship at the same time when they do not depend on each other. Each runs in its own git worktree with its own driver session; they meet only at merge time, one at a time, under a lock. This file is the protocol. It also applies, trivially, to a single cycle: the lock and the pending-decision landing cost nothing when nobody else is in flight, and one protocol is easier to keep correct than two.
 
+Scope: heartbeats and the lock live in one clone's `.git`, so they coordinate the worktrees of that clone only. All concurrent cycles run from one clone. A cloud session or another clone starts a cycle only when no cycle is in flight anywhere (no open cycle PR); otherwise it would see no heartbeats, could take a row already claimed, and would hold a private lock.
+
 ## Design at a glance
 
 | Concern | Mechanism | Why it cannot collide |
@@ -41,8 +43,8 @@ The session invoked with `--parallel N` is a coordinator. It does no cycle work 
    ```
 
 3. Prepare the worktree: copy the main checkout's `.env`, run `composer install` and `npm ci` (or the lockfile-respecting install the repo uses), and create its test database when the suite runs on PostgreSQL (below).
-4. Start one driver per cycle as a top-level session whose working directory is the worktree, for example a Houston pane (`pane_spawn` with `cwd` set to the worktree) running `/sunex-ship-cycle auto --cycle <slug>`. A driver must be top-level because it delegates to workers, a Verifier and a reviewer itself; an in-process subagent cannot. If no way to start top-level sessions exists, run the rows serially in this session instead and say so.
-5. Write a heartbeat for each cycle (`Stage 0 preflight`), then wait for the drivers to finish (block on the pane inbox; do not poll in a loop). Report each cycle's outcome as the drivers report.
+4. Write each cycle's first heartbeat from inside its worktree, so it records the worktree's path and exists before the driver starts: `cd .worktrees/<slug> && python3 .claude/skills/sunex-ship-cycle/scripts/heartbeat.py beat <slug> --stage 0 --name preflight --ref <type>/<slug> --status 'driver starting'`.
+5. Start one driver per cycle as a top-level session whose working directory is the worktree, for example a Houston pane (`pane_spawn` with `cwd` set to the worktree) running `/sunex-ship-cycle auto --cycle <slug>`. A driver is top-level rather than an in-process subagent because it outlives the coordinator's turn, has its own context budget for a whole cycle, and the owner can watch and steer it. If no way to start top-level sessions exists, run the rows serially in this session instead and say so. Then wait for the drivers to finish (block on the pane inbox; do not poll in a loop) and report each cycle's outcome as the drivers report.
 
 ## Heartbeats
 
@@ -61,7 +63,7 @@ When the test suite runs against PostgreSQL, parallel suites on one database cor
 DB_DATABASE=sunex_test_vacation_split composer test
 ```
 
-PHPUnit `<env>` entries without `force="true"` do not override a variable already set in the environment, so this works without editing `phpunit.xml`. If the repository later forces the value, set it in the worktree's untracked `.env.testing` instead. Drop the database at Stage 8. Dev servers for a manual check use distinct ports (`php artisan serve --port=80NN`, Vite `--port`), noted in the heartbeat status while running.
+PHPUnit `<env>` entries without `force="true"` do not override a variable already set in the environment, so this works without editing `phpunit.xml`. If `phpunit.xml` ever forces `DB_DATABASE`, remove the `force`: a forced value is written into the process environment before Laravel boots, and Laravel's environment is immutable, so neither the shell nor `.env.testing` can override it. Drop the database at Stage 8. Dev servers for a manual check use distinct ports (`php artisan serve --port=80NN`, Vite `--port`), noted in the heartbeat status while running.
 
 ## Landing under the lock
 
