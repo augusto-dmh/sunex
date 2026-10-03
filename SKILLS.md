@@ -23,10 +23,10 @@ ROADMAP row
   -> under the merge lock: rebase, land decisions and lessons, CI green, merge
 ```
 
-- **Autonomy:** agents decide with written options, why-yes and why-not, and record the choice in the cycle's `context.md` and the PR's Decisions section. They stop only for what only the owner can do: credentials, money, legal questions, or a conflict with a recorded owner decision.
-- **Merge:** automatic when the ship report is clean (Verifier PASS, gates and CI green, triage recorded, accepted fixes pushed, comments cleaned, clean-room check passed); a Verifier FAIL always stops.
+- **Autonomy:** agents decide with written options, why-yes and why-not, and record the choice in the cycle's `context.md` and the PR's Decisions section. They stop only for the conditions in the skill's autonomy contract: credentials or access, money, legal questions, no option that conforms to a recorded owner decision, a missing clean-room term list, a forbidden term already published, and a Verifier FAIL or a dirty ship report.
+- **Merge:** automatic when the ship report is clean (an independent Verifier's PASS, a seven-lane review by a fresh context, gates and CI green, triage recorded, accepted fixes pushed, review comments cleaned, no finding waiting on a product decision, clean-room check passed); a Verifier FAIL always stops.
 - **Parallel cycles:** rows the roadmap marks parallel-safe run in `.worktrees/<slug>`. Each cycle writes its own heartbeat in the shared git directory, keeps decisions provisional (`AD-PENDING-n`) until it merges, and merges one at a time under a lock after rebasing, which is where decision numbers are assigned. Details: [parallel-cycles.md](.claude/skills/sunex-ship-cycle/references/parallel-cycles.md).
-- **Models:** Opus 5.5 by default, Fable 5.1 for the Verifier and triage, Haiku 4.5 only for mechanical chores that pass a four-condition test. Details: [models.md](.claude/skills/sunex-ship-cycle/references/models.md).
+- **Models:** Opus 5.5 by default, Fable 5.1 for the Verifier on domain cycles and for triage of non-security findings, Haiku 4.5 only for mechanical chores that pass a four-condition test. Details: [models.md](.claude/skills/sunex-ship-cycle/references/models.md).
 
 ## Publishing rules in one paragraph
 
