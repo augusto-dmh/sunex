@@ -18,6 +18,8 @@ it('accepts conventional commits with an allowed scope and the Assisted-by trail
 })->with([
     'no scope' => "chore: update dependencies\n",
     'context scope' => "feat(absence): split férias into up to three periods\n\nWhy it matters.\n\nAssisted-by: Claude Code\n",
+    'documentation scope' => "docs(adr): record the decision to keep payroll out\n",
+    'harness scope' => "fix(skills): stop the ship cycle on a verifier failure\n",
     'breaking change' => "refactor(people)!: rename the employment reader\n",
     'leading digit' => "chore(deps): 2 packages need a newer php\n",
     'merge commit' => "Merge branch 'main' into feat/people\n",

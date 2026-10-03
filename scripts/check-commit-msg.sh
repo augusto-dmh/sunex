@@ -8,7 +8,7 @@
 set -eu
 
 types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
-scopes='people|org|movements|absence|agents|shared|auth|db|arch|ui|docs|ci|deps|tooling'
+scopes='people|org|movements|absence|agents|shared|auth|db|arch|ui|i18n|design|docs|adr|tdd|specs|skills|ci|deps|tooling'
 
 if [ "${1:-}" = "-" ]; then msg=$(cat); else msg=$(cat "$1"); fi
 header=$(printf '%s\n' "$msg" | sed -n '1p')
