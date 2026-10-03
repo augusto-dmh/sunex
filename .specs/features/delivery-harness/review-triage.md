@@ -5,7 +5,7 @@ Review of head `fd97876`, triaged 2026-10-02 against the code at that head. The 
 ## How the review ran
 
 - Lanes that posted: security (11 inline), regression (11 inline), tests (7 inline), architecture (15 inline), requirements (one PR-level comment with five findings, rows R-a to R-e). The data, domain and consolidation passes posted nothing. There is no `sunex-review:summary` comment, so it cannot be shown whether the data and domain lanes ran and found nothing or did not run. The ship report lists this. The PR changes no application code, migrations or CLT rules, so neither lane had a surface beyond what the other lanes covered.
-- All 44 inline comments were posted as single-comment reviews in the `COMMENTED` state. Deleting a comment removes its text; the empty review shells cannot be deleted through the API and remain as leftovers.
+- All 44 inline comments were posted as single-comment reviews in the `COMMENTED` state. Deleting the comments also removed those reviews: after the cleanup, the comment and review endpoints of the PR all return zero.
 - Triage: the orchestrator triaged the security lane (rows 1 to 11). Per `references/models.md`, the other lanes went to a fresh Fable 5.1 triager. That call failed on a usage limit (HTTP 429), so the unit was re-run on Opus 5.5 as the documented fallback. The orchestrator then checked every row against the code before recording it.
 - Every claim about script behaviour that a reviewer reported as reproduced was reproduced again by the triage in a scratch repository.
 
