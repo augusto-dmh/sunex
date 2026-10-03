@@ -45,6 +45,9 @@ class UserFactory extends Factory
 
     /**
      * Indicate that the model has two-factor authentication configured.
+     *
+     * Needs the two_factor_* columns, which no migration adds while Fortify's
+     * two-factor feature is off; the pull request that enables it adds them.
      */
     public function withTwoFactor(): static
     {
