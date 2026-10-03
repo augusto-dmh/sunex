@@ -26,7 +26,7 @@ A non-zero exit means stop and fix. Never work around a validator by rephrasing 
 
 **Branch:** `<type>/<optional-issue-number->kebab-summary`, for example `feat/employee-record`, `fix/14-vacation-split`, `docs/time-model-adr`.
 
-**Commit header and PR title:** `type(scope): imperative lowercase summary`, at most 72 characters, no trailing period. Types: `feat fix docs refactor test chore build ci perf style revert`. Scopes name a Sunex area (`people`, `organization`, `movements`, `absence`, `agents`, `mcp`, `audit`, `ui`, `skills`, `specs`, `deps`) when that helps the reader.
+**Commit header and PR title:** `type(scope): imperative lowercase summary`, at most 72 characters, no trailing period. Types: `feat fix docs refactor test chore build ci perf style revert`. The scope is optional; use one when it helps the reader. The repository's `scripts/check-commit-msg.sh`, which CI runs on every commit of a pull request, holds the allowed types and scopes and is the source of truth for header shape and attribution lines. `validate_metadata.py` hands every message and title to it when it exists and adds only the Sunex rules below.
 
 **Commit body:** always present. It explains why the change exists and any trade-off, in plain English, wrapped at about 72 columns. One concern per commit: a migration and the feature that needs it may share a commit; a formatting sweep and a feature may not.
 

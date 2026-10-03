@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Validate Sunex branch names, commit messages and PR titles.
 
+The repository's own commit-message checker, ``scripts/check-commit-msg.sh``
+(run by CI on every commit of a pull request), is the source of truth for the
+header shape, the allowed types and scopes, the 72-character limit and the
+forbidden co-author and "Generated with" lines. When it exists, every commit
+message and PR title is handed to it, and this script adds only the rules it
+does not have. Without it, built-in header and attribution rules apply.
+
 Checks, all hard failures:
 1. Branch: ``<type>/<optional-issue-number->kebab-summary``.
-2. Commit header and PR title: Conventional Commits, lowercase description,
-   no trailing period, header at most 72 characters.
+2. Commit header and PR title: the repository checker (else Conventional
+   Commits, lowercase description, header at most 72 characters); no
+   trailing period.
 3. Commit body: present (it explains why), separated from the header by a
    blank line.
 4. Trailers: the final paragraph is exactly ``Assisted-by: Claude Code``.
@@ -21,16 +29,21 @@ Usage:
   validate_metadata.py --range origin/main..HEAD
   validate_metadata.py --range origin/main..HEAD --allow ADR-0015   # adds that ADR
 
+``SUNEX_COMMIT_CHECKER`` overrides the checker path (empty: built-in rules
+only), for tests and unusual layouts.
+
 Exit codes: 0 pass, 1 violation, 2 usage error. Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
 TYPES = ("feat", "fix", "docs", "refactor", "test", "chore", "build", "ci", "perf", "style", "revert")
 TYPE_PATTERN = "|".join(TYPES)
@@ -63,17 +76,20 @@ INTERNAL_REF_PATTERNS = (
 # Tool attribution other than the single required trailer. "Generated with" is
 # matched only when it names the assistant, so "routes generated with Wayfinder"
 # stays legal.
+ROBOT_EMOJI = re.compile("\U0001F916")
 FORBIDDEN_ATTRIBUTION = (
     re.compile(r"co-authored-by\s*:", re.IGNORECASE),
     re.compile(r"generated (?:with|by)\s+\[?claude", re.IGNORECASE),
-    re.compile("\U0001F916"),
+    ROBOT_EMOJI,
 )
+COMMIT_CHECKER_REL = Path("scripts/check-commit-msg.sh")
 
 
 @dataclass
 class Report:
     errors: list[str] = field(default_factory=list)
     allowed: frozenset[str] = frozenset()
+    checker: Path | None = None
 
     def fail(self, label: str, message: str) -> None:
         self.errors.append(f"{label}: {message}")
@@ -88,22 +104,49 @@ def internal_refs(text: str, allowed: frozenset[str] = frozenset()) -> list[str]
     ]
 
 
+def commit_checker() -> Path | None:
+    override = os.environ.get("SUNEX_COMMIT_CHECKER")
+    if override is not None:
+        return Path(override) if override else None
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], check=True, capture_output=True, text=True).stdout.strip()
+    except (subprocess.CalledProcessError, OSError):
+        return None
+    path = Path(top) / COMMIT_CHECKER_REL
+    return path if path.is_file() else None
+
+
+def run_checker(label: str, message: str, report: Report) -> None:
+    assert report.checker is not None
+    result = subprocess.run(["sh", str(report.checker), "-"], input=message, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = " ".join(result.stderr.split()) or f"exit {result.returncode}"
+        report.fail(label, f"{report.checker.name}: {detail}")
+
+
 def check_branch(branch: str, report: Report) -> None:
     if not BRANCH_RE.fullmatch(branch):
         report.fail("branch", f"{branch!r} is not <type>/<kebab-summary>, e.g. feat/employee-record")
 
 
-def check_header(label: str, header: str, report: Report) -> None:
+def check_header_shape(label: str, header: str, report: Report) -> None:
+    """Built-in header rules, used only when the repository checker is absent."""
     if len(header) > MAX_HEADER:
         report.fail(label, f"{len(header)} characters, the limit is {MAX_HEADER}")
     match = HEADER_RE.fullmatch(header)
     if not match:
         report.fail(label, f"{header!r} is not 'type(scope): description' with an allowed type")
-        return
-    desc = match.group("desc")
-    if desc[:1].isupper():
+    elif match.group("desc")[:1].isupper():
         report.fail(label, "description must start lowercase")
-    if desc.rstrip().endswith("."):
+
+
+def check_header(label: str, header: str, report: Report, shape_checked: bool = False) -> None:
+    if not shape_checked:
+        if report.checker:
+            run_checker(label, header + "\n", report)
+        else:
+            check_header_shape(label, header, report)
+    if header.rstrip().endswith("."):
         report.fail(label, "description must not end with a period")
     for hit in internal_refs(header, report.allowed):
         report.fail(label, f"internal reference {hit}")
@@ -131,7 +174,9 @@ def check_message(label: str, message: str, report: Report) -> None:
         report.fail(label, "empty message")
         return
 
-    check_header(f"{label} header", lines[0].rstrip(), report)
+    if report.checker:
+        run_checker(label, "\n".join(lines) + "\n", report)
+    check_header(f"{label} header", lines[0].rstrip(), report, shape_checked=bool(report.checker))
 
     rest = lines[1:]
     if rest and rest[0].strip():
@@ -148,7 +193,9 @@ def check_message(label: str, message: str, report: Report) -> None:
         report.fail(label, "missing body: explain why the change is needed")
 
     full = "\n".join(lines)
-    for pattern in FORBIDDEN_ATTRIBUTION:
+    # The repository checker rejects co-author and "Generated with" lines; the
+    # robot emoji on its own is the one attribution it does not look for.
+    for pattern in (ROBOT_EMOJI,) if report.checker else FORBIDDEN_ATTRIBUTION:
         if pattern.search(full):
             report.fail(label, f"forbidden attribution matching {pattern.pattern!r}")
 
@@ -182,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
     if not any((args.branch, args.pr_title, args.message, args.message_file, args.rev_range)):
         parser.error("provide at least one of --branch, --pr-title, --message, --message-file, --range")
 
-    report = Report(allowed=frozenset(args.allow))
+    report = Report(allowed=frozenset(args.allow), checker=commit_checker())
     if args.branch:
         check_branch(args.branch, report)
     if args.pr_title:

@@ -157,7 +157,7 @@ Landing, the same in serial and parallel mode (the lock costs nothing when alone
 1. `python3 $H/heartbeat.py lock <slug>`. Exit 3: another cycle is merging; park with a heartbeat (`waiting for merge lock`) and poll `lock-status` with a Monitor until-loop at about one-minute intervals (never `sleep`). Exit 4: the holder looks stale; check its heartbeat and PR, and only if it is truly dead re-run with `--break-stale`, recording that in the report.
 2. Inside the lock: `git fetch origin && git rebase origin/main`. Resolve conflicts per references/parallel-cycles.md. If the rebase brought in new commits, re-run the full gates.
 3. `python3 $H/merge_state.py <slug>` to number and land pending decisions and lessons. Mark this cycle's ROADMAP row done with the PR number, editing only that row. If any migration of this cycle is timestamped earlier than the newest migration on `main`, rename it to a current timestamp.
-4. Commit the landing (`docs(specs): record the decisions and lessons of <plain-language cycle name>`), run `clean_room.py`, and `git push --force-with-lease` (the feature branch only; never force-push `main`).
+4. Commit the landing (`docs: record the decisions and lessons of <plain-language cycle name>`), run `clean_room.py`, and `git push --force-with-lease` (the feature branch only; never force-push `main`).
 5. Wait for CI on the new head (`gh pr checks <N> --watch` as a background task or a Monitor until-loop). Red CI: release the lock, fix, return to step 1.
 6. `gh pr merge <N> --merge` (a merge commit keeps the atomic commits and the PR boundary visible).
 7. `python3 $H/heartbeat.py unlock <slug>`. Release the lock on every exit path from this stage, including failures.

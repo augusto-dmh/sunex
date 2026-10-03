@@ -30,7 +30,7 @@ ROADMAP row
 
 ## Publishing rules in one paragraph
 
-Conventional Commits in English, one concern per commit, a body that explains why, and `Assisted-by: Claude Code` as the only trailer (no co-author lines, no "generated with" lines). No internal planning IDs in commits or PRs; traceability stays under `.specs/`. A clean-room check runs before every push. PR bodies use the sections of [.github/pull_request_template.md](.github/pull_request_template.md). The validators in `sunex-finalize` enforce all of this.
+Conventional Commits in English, one concern per commit, a body that explains why, and `Assisted-by: Claude Code` as the only trailer (no co-author lines, no "generated with" lines). No internal planning IDs in commits or PRs; traceability stays under `.specs/`. A clean-room check runs before every push. PR bodies use the sections of [.github/pull_request_template.md](.github/pull_request_template.md). CI's commit checker (`scripts/check-commit-msg.sh`) and the validators in `sunex-finalize`, which defer to it for header and attribution rules, enforce all of this.
 
 ## Where things live
 

@@ -1,12 +1,31 @@
 from __future__ import annotations
 
 import io
+import os
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+from unittest import mock
 
 from helpers import TempRepo, valid_message
 
 import validate_metadata
+
+# A stand-in for the repository's scripts/check-commit-msg.sh: it only
+# rejects the scope "payroll", so a test can tell which rules ran.
+FAKE_CHECKER = """#!/bin/sh
+msg=$(cat)
+case "$msg" in *"(payroll)"*) echo "unknown scope payroll" >&2; exit 1 ;; esac
+exit 0
+"""
+
+
+def setUpModule() -> None:
+    # Most tests pin the built-in rules; DelegationTest switches the checker on.
+    patcher = mock.patch.dict(os.environ, {"SUNEX_COMMIT_CHECKER": ""})
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
 
 
 def run(*argv: str) -> tuple[int, str]:
@@ -128,6 +147,42 @@ class RangeTest(unittest.TestCase):
 class InputTest(unittest.TestCase):
     def test_missing_message_file_is_a_usage_error(self) -> None:
         self.assertEqual(run("--message-file", "/nonexistent/msg.txt")[0], 2)
+
+
+class DelegationTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.checker = Path(tmp.name) / "check-commit-msg.sh"
+        self.checker.write_text(FAKE_CHECKER)
+
+    def run_with_checker(self, *argv: str) -> tuple[int, str]:
+        with mock.patch.dict(os.environ, {"SUNEX_COMMIT_CHECKER": str(self.checker)}):
+            return run(*argv)
+
+    def test_header_rules_come_from_the_repository_checker(self) -> None:
+        code, err = self.run_with_checker("--pr-title", "feat(payroll): add salaries")
+        self.assertEqual(code, 1)
+        self.assertIn("check-commit-msg.sh: unknown scope payroll", err)
+        # The built-in shape rule (lowercase) no longer applies; the checker decides.
+        self.assertEqual(self.run_with_checker("--pr-title", "feat(people): Add persons")[0], 0)
+
+    def test_whole_message_goes_to_the_checker(self) -> None:
+        message = valid_message().replace("stores each", "(payroll) stores each")
+        self.assertIn("unknown scope payroll", self.run_with_checker("--message", message)[1])
+
+    def test_sunex_only_rules_still_apply(self) -> None:
+        self.assertEqual(self.run_with_checker("--message", "fix(people): correct\n\nAssisted-by: Claude Code\n")[0], 1)
+        self.assertEqual(self.run_with_checker("--pr-title", "feat(people): apply AD-007")[0], 1)
+        self.assertEqual(self.run_with_checker("--pr-title", "feat(people): add persons.")[0], 1)
+
+    def test_checker_is_found_at_the_repository_root(self) -> None:
+        with TempRepo() as repo:
+            repo.write("scripts/check-commit-msg.sh", FAKE_CHECKER)
+            with mock.patch.dict(os.environ, clear=False) as env:
+                env.pop("SUNEX_COMMIT_CHECKER", None)
+                self.assertEqual(run("--pr-title", "feat(payroll): add salaries")[0], 1)
+                self.assertEqual(run("--pr-title", "feat(people): add persons")[0], 0)
 
 
 if __name__ == "__main__":
