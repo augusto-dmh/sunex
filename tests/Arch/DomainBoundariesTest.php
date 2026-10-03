@@ -5,6 +5,10 @@
 | bottom up; each may depend only on the contexts below it, and only through
 | their Contracts and Events namespaces. Models, actions and other classes stay
 | private to the context that owns them.
+|
+| Shared is the shared kernel: ARCHITECTURE.md names the Authorizer, the
+| approval engine, the outbox and the value objects as its public surface, and
+| TDD-0001 places them in the namespaces below, so every context may use those.
 */
 
 const DOMAIN_CONTEXTS = [
@@ -15,6 +19,10 @@ const DOMAIN_CONTEXTS = [
     'Absence' => ['People', 'Organization', 'Shared'],
     'Agents' => ['Absence', 'Movements', 'People', 'Organization', 'Shared'],
 ];
+
+const PUBLIC_NAMESPACES = ['Contracts', 'Events'];
+
+const SHARED_KERNEL_NAMESPACES = ['Access', 'Approvals', 'Audit', 'Identifiers', 'Integration', 'Time'];
 
 arch('domain code does not depend on the delivery layer')
     ->expect('App\Domain')
@@ -47,6 +55,8 @@ test('a context reaches another only when the dependency table allows it, and on
     $expectation = expect("App\\Domain\\{$context}")->not->toUse("App\\Domain\\{$other}");
 
     if ($allowed) {
-        $expectation->ignoring(["App\\Domain\\{$other}\\Contracts", "App\\Domain\\{$other}\\Events"]);
+        $public = $other === 'Shared' ? [...PUBLIC_NAMESPACES, ...SHARED_KERNEL_NAMESPACES] : PUBLIC_NAMESPACES;
+
+        $expectation->ignoring(array_map(fn (string $namespace): string => "App\\Domain\\{$other}\\{$namespace}", $public));
     }
 })->with(contextPairs());
