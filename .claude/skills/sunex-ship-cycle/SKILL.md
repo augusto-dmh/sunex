@@ -177,11 +177,11 @@ Landing, the same in serial and parallel mode (the lock costs nothing when alone
 
 ## Stage 8: Wrap
 
-1. From the main checkout: `git checkout main && git pull`. Remove the cycle's worktree (`git worktree remove .worktrees/<slug>`), delete the local branch, drop the cycle's test database, and `python3 $H/heartbeat.py clear <slug>`.
+1. From the main checkout's root, without switching its branch (a serial cycle may be working there): `git fetch origin`, `git worktree remove .worktrees/<slug>`, `git branch -D <type>/<slug>`, drop the cycle's test database, and `python3 $H/heartbeat.py clear <slug>`. Update the local `main` only when no checkout has it checked out (`git fetch origin main:main`); a checked-out `main` is left to its owner. A serial cycle that ran in the main checkout itself switches back to `main` and pulls, since nothing else uses that tree.
 2. Confirm the merged ROADMAP row shows the cycle done and STATE.md has its decisions. If `main` still holds this cycle's `AD-PENDING-n` or `lessons-pending.jsonl` (a PR merged without its landing), land them on a follow-up branch through Stage 7 steps 1 to 7, under the lock; fix a missing ROADMAP mark the same way.
 3. Report, in order: the cycle closed and PR merged; the next roadmap row and its scope in one line; a model recommendation for that row with a one-line reason (references/models.md); per-subagent token use if known, noting that `/cost` is the billed authority.
 
-In `until <row>` mode, go back to Stage 0 unless the named row just merged. In `auto` mode, stop after the wrap report.
+In `until <row>` mode, go back to Stage 0 unless the named row just merged. In `auto` mode, stop after the wrap report. A parallel driver always ends after its wrap, because its working directory was the worktree just removed; the coordinator starts the next row.
 
 ## Delegation resilience
 
