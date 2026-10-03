@@ -28,6 +28,7 @@ it('accepts conventional commits with an allowed scope and the Assisted-by trail
     'pull request merge commit' => "Merge pull request #12 from augusto-dmh/feat/people\n\nfeat(people): add persons\n",
     'git revert' => "Revert \"feat(org): add positions\"\n",
     'regenerated in the body' => "fix(deps): complete the lockfile\n\nRegenerated with npm 11.\n",
+    'generated files described in the body' => "fix(deps): complete the lockfile\n\nThe lock was generated with npm 11, and the helpers\nare auto-generated with wayfinder:generate.\n",
     '72 characters with accents' => 'feat(absence): f'.str_repeat('é', 56)."\n",
 ]);
 

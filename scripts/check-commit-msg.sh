@@ -35,6 +35,8 @@ if [ "$generated_header" -eq 0 ]; then
   fi
 fi
 
-if printf '%s\n' "$msg" | LC_ALL=C grep -Eiq '^(Co-Authored-By|Signed-off-by):|(^|[^a-z])Generated with'; then
+# The footer counts only at the start of a line (after an optional emoji), so prose
+# about generated files is not mistaken for it.
+if printf '%s\n' "$msg" | LC_ALL=C grep -Eiq '^(Co-Authored-By|Signed-off-by):|^[^a-z0-9]*Generated with'; then
   echo "forbidden trailer: disclose AI assistance only with 'Assisted-by: <tool>'" >&2; exit 1
 fi
