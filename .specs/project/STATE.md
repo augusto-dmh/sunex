@@ -89,10 +89,9 @@ None for the next rows. Items only the owner can do:
 ## Handoff
 
 Foundation PRs F1 (`docs-foundation`, PR #2), F2 (`quality-tooling`, PR #3) and F3
-(`delivery-harness`, PR #1) are in review. F2 already delivers row 01 (PostgreSQL through Compose,
-tests on PostgreSQL in CI) and the skeleton and dependency-table tests of row 02. Merge F2 before
-or together with F1: README, CONTRIBUTING and the agent guide describe the gates by the names F2
-introduces. As soon as F1 and F2 merge, **wave A** can start in four parallel worktrees:
+(`delivery-harness`, PR #1) are merged (2026-10-03, in the order F2, F3, F1, each rebased on `main`
+before merging, all CI checks green). F2 delivered row 01 and the skeleton and dependency-table
+tests of row 02. **Wave A** can start now in four parallel worktrees:
 
 1. `domain-boundaries` (row 02, what F2 left): route files per context, the remaining arch rules
    and the coverage gate, before the first context code lands.
