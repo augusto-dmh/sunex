@@ -71,6 +71,8 @@ export default defineConfig({
             'composer.json',
             'resources/js/components/ui/*',
             'resources/views/mail/*',
+            // Vendored verbatim; formatting it would break the pinned tree hash.
+            '.claude/skills/tlc-spec-driven/**',
         ],
         sortTailwindcss: {
             functions: ['clsx', 'cn', 'cva'],
