@@ -1,5 +1,10 @@
 <?php
 
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Facades\Response;
+use Illuminate\Support\Facades\Route;
+
 /*
 | Domain boundaries (ARCHITECTURE.md, ADR-0004). Contexts are listed from the
 | bottom up; each may depend only on the contexts below it, and only through
@@ -24,13 +29,27 @@ const PUBLIC_NAMESPACES = ['Contracts', 'Events'];
 
 const SHARED_KERNEL_NAMESPACES = ['Access', 'Approvals', 'Audit', 'Identifiers', 'Integration', 'Time'];
 
+// Namespaces match by prefix; global helpers are matched by their function name.
 arch('domain code does not depend on the delivery layer')
     ->expect('App\Domain')
     ->not->toUse([
         'Illuminate\Http',
         'Illuminate\Routing',
+        'Illuminate\Foundation\Http',
+        Request::class,
+        Response::class,
+        Redirect::class,
+        Route::class,
         'Inertia',
         'App\Http',
+        'App\Console',
+        'request',
+        'response',
+        'redirect',
+        'back',
+        'to_route',
+        'session',
+        'inertia',
     ]);
 
 /**
