@@ -3,8 +3,8 @@ name: pr-review
 description: 'Multi-agent pull-request review for Sunex (Laravel 13, Pest 5, Inertia 3 + Vue 3 + TypeScript, PostgreSQL): seven parallel review lanes (security and authorization, requirements, tests, architecture, data integrity and performance, domain rules, regression) post inline and summary comments with gh, then a consolidation pass. Use only when explicitly asked to review a pull request ("review PR #N", "code review this PR"), or when sunex-ship-cycle dispatches it. Not for automatic use while coding, for publishing (use sunex-finalize), or for general questions.'
 license: AGPL-3.0-only
 metadata:
-  author: Sunex contributors
-  version: 1.0.0
+    author: Sunex contributors
+    version: 1.0.0
 ---
 
 # PR Review: orchestration protocol
@@ -92,11 +92,17 @@ Posts one PR-level summary, no inline comments.
 
 ```markdown
 <!-- sunex-review:requirements -->
+
 ## 📋 Requirements review
+
 **Sources:** <spec path, ADR files, STATE decisions>
+
 ### ✅ Implemented
+
 ### ❌ Missing or incomplete
+
 ### 🔲 Definition of done
+
 ### 💬 Notes
 ```
 
@@ -163,22 +169,31 @@ After all lanes return, spawn one consolidation subagent (Haiku) that:
 
 ```markdown
 <!-- sunex-review:summary -->
+
 ## Review summary
 
-| | |
-|---|---|
-| **Lanes** | <n> of 7: security, requirements, tests, architecture, data, domain, regression |
-| **Rulebook read** | <ADRs, specs, guidelines the lanes cited> |
-| **Findings** | <n> across <m> files |
+|                   |                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------- |
+| **Lanes**         | <n> of 7: security, requirements, tests, architecture, data, domain, regression |
+| **Rulebook read** | <ADRs, specs, guidelines the lanes cited>                                       |
+| **Findings**      | <n> across <m> files                                                            |
 
 ### 🔒 Security (<n>)
+
 - [`path:line`] title
+
 ### 🚨 Critical (<n>)
+
 ### ⚖️ Compliance (<n>)
+
 ### ⚡ Performance (<n>)
+
 ### ⚠️ Warnings (<n>)
+
 ### 💡 Suggestions (<n>)
+
 ### 🔍 Files with no inline comments
+
 ### ✅ Highlights
 ```
 

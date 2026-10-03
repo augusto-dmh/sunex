@@ -8,12 +8,12 @@ A delegated worker's brief says what must be true when it finishes and leaves ho
 - **The seams:** signatures and `file:line` references from the survey, not file bodies.
 - **The binding decisions:** the ADRs and active STATE.md decisions the phase must conform to, the cycle's pending decisions in `context.md`, and any assumption it must not relitigate.
 - **The invariants, named as invariants,** each needing a sensor (a test that fails when the invariant breaks). Do not dictate the test's shape or name. Sunex examples:
-  - "an employee's record as of a date never changes when a later correction is recorded";
-  - "a user of company A can neither read nor infer company B's rows, and the failure looks the same as a missing record";
-  - "a masked field never appears in an Inertia prop, an API resource or an audit payload for a viewer without the field group";
-  - "an agent can never do what its sponsor could not do at that moment";
-  - "the audit row and the change it records commit or roll back together";
-  - "two vacation periods of one employee can never overlap, enforced by the database".
+    - "an employee's record as of a date never changes when a later correction is recorded";
+    - "a user of company A can neither read nor infer company B's rows, and the failure looks the same as a missing record";
+    - "a masked field never appears in an Inertia prop, an API resource or an audit payload for a viewer without the field group";
+    - "an agent can never do what its sponsor could not do at that moment";
+    - "the audit row and the change it records commit or roll back together";
+    - "two vacation periods of one employee can never overlap, enforced by the database".
 - **Environment facts** that cost time to rediscover: the worktree path, the gate commands read from `composer.json` and `package.json`, the test database name for this worktree, the baseline test count, services that must be running, the Laravel Boost `search-docs` tool for version-specific framework facts.
 - **The definition of done:** tests derive from acceptance criteria; gates green before a task is done; one atomic commit per task following `sunex-finalize` (`Assisted-by: Claude Code` only, no internal IDs, body explains why); decisions recorded with options, why-yes and why-not.
 - **The working rules:** Bash cwd resets between calls, so use absolute paths and run git from the worktree root; Read a file before editing it; never stash; never touch another worktree; never ask the user (decide and record).

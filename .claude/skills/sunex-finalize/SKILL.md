@@ -3,8 +3,8 @@ name: sunex-finalize
 description: 'Publishes finished Sunex work: branch name, atomic Conventional Commits with the Assisted-by trailer, gate run, clean-room check, push, and a pull request whose body follows the repository template. Use when asked to finalize, commit, push, open or update a pull request, or write a PR description for Sunex. Not for implementing features, reviewing a PR (use pr-review) or running a whole roadmap cycle (use sunex-ship-cycle, which calls this skill).'
 license: AGPL-3.0-only
 metadata:
-  author: Sunex contributors
-  version: 1.0.0
+    author: Sunex contributors
+    version: 1.0.0
 ---
 
 # Sunex Finalize
@@ -59,7 +59,7 @@ Read `composer.json` (`scripts`) and `package.json` (`scripts`) for the exact ga
 - PHP: format check (Pint), static analysis (Larastan), refactor dry-run (Rector), tests (Pest, including architecture tests). A `composer` aggregate script that runs all of them, when present, is the gate of record.
 - Frontend: the type check (`vue-tsc`), the lint/format check, and the production build.
 
-Run the narrowest relevant subset while iterating and the full set before pushing. A docs-only or skill-only change runs `git diff --check`, the frontend lint/format check (it formats Markdown outside ignored folders, tables included), the skill script tests (see `.claude/skills/README.md`) and any validator that covers the changed files. Report every gate you ran with its result, and any you could not run with the reason. Do not publish with a known failing gate.
+Run the narrowest relevant subset while iterating and the full set before pushing. A docs-only or skill-only change runs `git diff --check`, the Markdown format check on the changed files by path (`npx vp fmt --check <changed .md paths>`; `npm run check` skips gitignored folders, and the vendored `tlc-spec-driven` is excluded on purpose), the skill script tests (see `.claude/skills/README.md`) and any validator that covers the changed files. Report every gate you ran with its result, and any you could not run with the reason. Do not publish with a known failing gate.
 
 If a formatter rewrites files, re-stage them before committing so CI does not fail on formatting.
 
@@ -81,10 +81,10 @@ git commit -F /path/to/msg.txt
 1. `git fetch origin` and run `python3 $S/clean_room.py --base origin/main`. Fix every FAIL in work that has not been pushed by rewriting the text (amend or fixup the offending commit). A FAIL in anything already pushed or published (a commit, the branch name, a PR title or body) cannot be fixed here: a force push does not unpublish it, because GitHub keeps the old commits reachable from the PR's force-push entry. Stop and report the term's location, the commit SHAs and the PR to the owner; only the owner can ask GitHub to purge it. Treat the term as disclosed. A WARN means a lock-file hash happens to contain a term; confirm it is inside the hash before continuing.
 2. `gh auth status`; push with `git push -u origin <branch>`.
 3. Draft the body in `$G/sunex-pr-draft.md`, where `G=$(git rev-parse --absolute-git-dir)` is this worktree's own git directory: private to the cycle, never committed, and not shared with parallel cycles the way a fixed `/tmp` name would be. Use the `## ` sections of `.github/pull_request_template.md`, in order: Description, Context, Architecture, Main changes, Decisions, Tests, Configuration, Dependencies, Impact, How to validate, Checklist, AI assistance. Write "None." where nothing applies. Paragraphs are single unwrapped lines: GitHub renders hard wraps literally.
-   - **Context** links public sources (Laravel docs, planalto.gov.br for CLT articles, eSocial manuals), never private notes.
-   - **Decisions** lists each choice made while building: the options, why yes and why not for each, and the pick. Plain words, no decision IDs.
-   - **Tests** names what the new tests assert and lists each gate command with its result.
-   - **AI assistance** says what the assistant wrote (code, tests, docs, this description) and what a human reviewed, ran or changed. Be specific; do not overstate human review that did not happen.
+    - **Context** links public sources (Laravel docs, planalto.gov.br for CLT articles, eSocial manuals), never private notes.
+    - **Decisions** lists each choice made while building: the options, why yes and why not for each, and the pick. Plain words, no decision IDs.
+    - **Tests** names what the new tests assert and lists each gate command with its result.
+    - **AI assistance** says what the assistant wrote (code, tests, docs, this description) and what a human reviewed, ran or changed. Be specific; do not overstate human review that did not happen.
 4. Check it, then scan the rendered body and the title for the clean room too. Publish exactly the file that was scanned:
 
 ```bash
@@ -101,7 +101,7 @@ REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 gh api -X PATCH repos/$REPO/pulls/<N> -F body=@$G/sunex-pr-body.md -f title='<title>'
 ```
 
-   Create drafts only when asked.
+Create drafts only when asked.
 
 ## Report
 

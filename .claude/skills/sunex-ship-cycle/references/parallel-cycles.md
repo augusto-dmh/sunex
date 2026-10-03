@@ -6,14 +6,14 @@ Scope: heartbeats and the lock live in one clone's `.git`, so they coordinate th
 
 ## Design at a glance
 
-| Concern | Mechanism | Why it cannot collide |
-|---|---|---|
-| Who is doing what | One heartbeat file per cycle in `<git common dir>/sunex-ship/<slug>.status` | Each cycle writes only its own file; the directory is inside the shared `.git`, never committed, visible from every worktree |
-| Decision numbers | Provisional `AD-PENDING-n` in the cycle's `context.md`; final `AD-NNN` assigned by `merge_state.py` while holding the merge lock | Numbers are assigned in merge order by exactly one process at a time, after rebasing on the latest `main` |
-| Shared files (STATE.md, ROADMAP.md, `.specs/lessons.json`) | Untouched during the cycle; written only in the landing commit, inside the lock | Two cycles never have competing edits in flight |
-| Lessons | `lessons-pending.jsonl` per cycle, replayed through `lessons.py add` at landing | The machine-owned store is only ever written on top of the latest `main` |
-| Merge order | First cycle with a clean ship report takes the lock; the others wait | Dependent rows are never parallel in the first place, so order among independent rows does not matter |
-| Code conflicts | Rebase onto `origin/main` inside the lock, then full gates | The branch that merges is always tested on top of everything merged before it |
+| Concern                                                    | Mechanism                                                                                                                        | Why it cannot collide                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Who is doing what                                          | One heartbeat file per cycle in `<git common dir>/sunex-ship/<slug>.status`                                                      | Each cycle writes only its own file; the directory is inside the shared `.git`, never committed, visible from every worktree |
+| Decision numbers                                           | Provisional `AD-PENDING-n` in the cycle's `context.md`; final `AD-NNN` assigned by `merge_state.py` while holding the merge lock | Numbers are assigned in merge order by exactly one process at a time, after rebasing on the latest `main`                    |
+| Shared files (STATE.md, ROADMAP.md, `.specs/lessons.json`) | Untouched during the cycle; written only in the landing commit, inside the lock                                                  | Two cycles never have competing edits in flight                                                                              |
+| Lessons                                                    | `lessons-pending.jsonl` per cycle, replayed through `lessons.py add` at landing                                                  | The machine-owned store is only ever written on top of the latest `main`                                                     |
+| Merge order                                                | First cycle with a clean ship report takes the lock; the others wait                                                             | Dependent rows are never parallel in the first place, so order among independent rows does not matter                        |
+| Code conflicts                                             | Rebase onto `origin/main` inside the lock, then full gates                                                                       | The branch that merges is always tested on top of everything merged before it                                                |
 
 ## Choosing parallel rows
 
@@ -23,10 +23,10 @@ A row may run in parallel only when all of these hold. Otherwise it waits for a 
 2. Every row it depends on is merged.
 3. No heartbeat claims it.
 4. It does not overlap an in-flight cycle in a way rebasing cannot absorb cheaply. Compare the planned areas (from the row and, once written, the other cycle's `spec.md`/`design.md`):
-   - both create or alter migrations on the same table;
-   - both add or upgrade Composer or npm dependencies (lock files do not merge; one waits);
-   - both change the same shared contract: the permission function, the audit writer, `HandleInertiaRequests` shared props, a base model or trait, the agent tool base class;
-   - both change the same architecture test rules.
+    - both create or alter migrations on the same table;
+    - both add or upgrade Composer or npm dependencies (lock files do not merge; one waits);
+    - both change the same shared contract: the permission function, the audit writer, `HandleInertiaRequests` shared props, a base model or trait, the agent tool base class;
+    - both change the same architecture test rules.
 
 Record the selection and the overlap check in each cycle's `context.md`. Default cap: three cycles in flight; more makes rebases and reviews the bottleneck.
 
@@ -37,10 +37,10 @@ The session invoked with `--parallel N` is a coordinator. It does no cycle work 
 1. Confirm `.worktrees/` is ignored (`git check-ignore -q .worktrees/x`). If not, add `/.worktrees/` to `.git/info/exclude` (local, uncommitted) and say so in the report.
 2. For each selected row, from the main checkout root:
 
-   ```bash
-   git fetch origin
-   git worktree add .worktrees/<slug> -b <type>/<slug> origin/main
-   ```
+    ```bash
+    git fetch origin
+    git worktree add .worktrees/<slug> -b <type>/<slug> origin/main
+    ```
 
 3. Prepare the worktree: copy the main checkout's `.env`, run `composer install` and `npm ci` (or the lockfile-respecting install the repo uses), and create its test database when the suite runs on PostgreSQL (below).
 4. Write each cycle's first heartbeat from inside its worktree, so it records the worktree's path and exists before the driver starts: `cd .worktrees/<slug> && python3 .claude/skills/sunex-ship-cycle/scripts/heartbeat.py beat <slug> --stage 0 --name preflight --ref <type>/<slug> --status 'driver starting'`.
@@ -79,11 +79,11 @@ Always release the lock on the way out, including on failure (`heartbeat.py unlo
 
 ## Failure cases
 
-| Situation | Action |
-|---|---|
-| Lock held (exit 3) | Park with heartbeat `waiting for merge lock`; retry `heartbeat.py lock <slug>` about once a minute in a Monitor until-loop, leaving it on exit 4 (`lock-status` always exits 0 and cannot end the loop) |
-| Red CI or a refused merge after the landing commit | Reset to the commit before the landing and push it before releasing the lock, so the pending decision IDs come back and are numbered again from the next `main`; never release the lock with final numbers that are not on `main` |
-| Lock stale (exit 4) | Check the holder's heartbeat and PR; break it only when the holder is gone (`--break-stale`), and record it |
-| Driver session died mid-cycle | The coordinator (or the next session) sees a stale heartbeat, inspects the worktree, and adopts the cycle with `--cycle <slug>` |
-| Two cycles turn out to overlap after Design | The later one records the overlap in `context.md`, finishes its Design, and waits for the other to merge before Execute (rebase first) |
-| `merge_state.py` fails | Fix the cause (usually a malformed pending lesson; the error names its line) and re-run: lessons already replayed are not replayed again. If the run died between writing STATE.md and rewriting the cycle's files, `git restore` both first |
+| Situation                                          | Action                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lock held (exit 3)                                 | Park with heartbeat `waiting for merge lock`; retry `heartbeat.py lock <slug>` about once a minute in a Monitor until-loop, leaving it on exit 4 (`lock-status` always exits 0 and cannot end the loop)                                      |
+| Red CI or a refused merge after the landing commit | Reset to the commit before the landing and push it before releasing the lock, so the pending decision IDs come back and are numbered again from the next `main`; never release the lock with final numbers that are not on `main`            |
+| Lock stale (exit 4)                                | Check the holder's heartbeat and PR; break it only when the holder is gone (`--break-stale`), and record it                                                                                                                                  |
+| Driver session died mid-cycle                      | The coordinator (or the next session) sees a stale heartbeat, inspects the worktree, and adopts the cycle with `--cycle <slug>`                                                                                                              |
+| Two cycles turn out to overlap after Design        | The later one records the overlap in `context.md`, finishes its Design, and waits for the other to merge before Execute (rebase first)                                                                                                       |
+| `merge_state.py` fails                             | Fix the cause (usually a malformed pending lesson; the error names its line) and re-run: lessons already replayed are not replayed again. If the run died between writing STATE.md and rewriting the cycle's files, `git restore` both first |

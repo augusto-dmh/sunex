@@ -3,8 +3,8 @@ name: sunex-ship-cycle
 description: 'End-to-end orchestrator for Sunex roadmap cycles: pick the next ROADMAP row (or several parallel-safe rows, each in its own git worktree), plan and build it with tlc-spec-driven while auto-deciding with recorded rationale, publish with sunex-finalize, review with pr-review in a fresh context, triage every finding against the code, fix, delete the review comments, land decisions and lessons under a merge lock, and merge when the ship report is clean. Use when asked to "ship the next PR", "run the ship cycle", "ship rows X and Y in parallel", or to resume a cycle after an interruption ("continue"). Not for ad-hoc edits, standalone reviews (pr-review) or publishing only (sunex-finalize).'
 license: AGPL-3.0-only
 metadata:
-  author: Sunex contributors
-  version: 1.0.0
+    author: Sunex contributors
+    version: 1.0.0
 ---
 
 # Sunex Ship Cycle
@@ -51,14 +51,14 @@ The mode holds for the whole invocation.
 
 ## Where state lives
 
-| What | Where | Written by |
-|---|---|---|
-| Roadmap rows, status, parallel-safety, dependencies | `.specs/project/ROADMAP.md` | Stage 7 only (own row) |
-| Project decisions `AD-NNN`, handoff | `.specs/project/STATE.md` | Stage 7 only, through `merge_state.py` |
-| Cycle artifacts: spec, context (with pending decisions), design, tasks, validation, triage | `.specs/features/<slug>/` | The cycle |
-| Pending lessons | `.specs/features/<slug>/lessons-pending.jsonl` | Verifier |
-| Heartbeats, merge lock | `<git common dir>/sunex-ship/` via `scripts/heartbeat.py` | Every stage |
-| Parallel worktrees | `.worktrees/<slug>/` on branch `<type>/<slug>` | Coordinator |
+| What                                                                                       | Where                                                     | Written by                             |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------- | -------------------------------------- |
+| Roadmap rows, status, parallel-safety, dependencies                                        | `.specs/project/ROADMAP.md`                               | Stage 7 only (own row)                 |
+| Project decisions `AD-NNN`, handoff                                                        | `.specs/project/STATE.md`                                 | Stage 7 only, through `merge_state.py` |
+| Cycle artifacts: spec, context (with pending decisions), design, tasks, validation, triage | `.specs/features/<slug>/`                                 | The cycle                              |
+| Pending lessons                                                                            | `.specs/features/<slug>/lessons-pending.jsonl`            | Verifier                               |
+| Heartbeats, merge lock                                                                     | `<git common dir>/sunex-ship/` via `scripts/heartbeat.py` | Every stage                            |
+| Parallel worktrees                                                                         | `.worktrees/<slug>/` on branch `<type>/<slug>`            | Coordinator                            |
 
 Where `tlc-spec-driven` says `.specs/STATE.md`, Sunex means `.specs/project/STATE.md`. No cycle writes STATE.md, ROADMAP.md or `.specs/lessons.json` before Stage 7: that is what makes parallel cycles conflict-free.
 
@@ -85,19 +85,19 @@ Scope them: the affected Pest file or filter per task commit; the full set at ea
 1. `python3 $H/heartbeat.py show`. This session drives a cycle when it was started with `--cycle <slug>`, runs inside that cycle's worktree, or has that cycle's branch checked out; that is a resume even when the heartbeat is fresh. Any other cycle with a fresh heartbeat belongs to another session: never drive it from here. A stale heartbeat (default two hours) whose worktree has no running session may be adopted; record the adoption in the cycle's `context.md`.
 2. Determine the stage of the cycle being driven:
 
-| Observation | Resume at |
-|---|---|
-| No cycle in flight for this session | Stage 0 |
-| Cycle branch exists; tlc Execute or Verifier incomplete | Stage 1 |
-| `validation.md` says PASS; no open PR | Stage 2 |
-| `validation.md` says FAIL and the fix-loop count in `context.md` is three | Stop with the report |
-| PR open; no `<!-- sunex-review:` comments and no `review-triage.md` | Stage 3 |
-| Some `<!-- sunex-review:` comments but no `<!-- sunex-review:summary -->` comment; no `review-triage.md` | Stage 3, after deleting them (Stage 6 selector): the review was interrupted |
-| Review summary comment present; no `review-triage.md` | Stage 4 |
-| `review-triage.md` exists; accepted fixes not all pushed | Stage 5 |
-| Fixes pushed; review comments still present | Stage 6 |
-| No review comments left and unmerged | Stage 7 |
-| PR merged; worktree, heartbeat or test database still present, or `AD-PENDING-n` or `lessons-pending.jsonl` still on `main` (a PR merged without its landing) | Stage 8 |
+| Observation                                                                                                                                                   | Resume at                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| No cycle in flight for this session                                                                                                                           | Stage 0                                                                     |
+| Cycle branch exists; tlc Execute or Verifier incomplete                                                                                                       | Stage 1                                                                     |
+| `validation.md` says PASS; no open PR                                                                                                                         | Stage 2                                                                     |
+| `validation.md` says FAIL and the fix-loop count in `context.md` is three                                                                                     | Stop with the report                                                        |
+| PR open; no `<!-- sunex-review:` comments and no `review-triage.md`                                                                                           | Stage 3                                                                     |
+| Some `<!-- sunex-review:` comments but no `<!-- sunex-review:summary -->` comment; no `review-triage.md`                                                      | Stage 3, after deleting them (Stage 6 selector): the review was interrupted |
+| Review summary comment present; no `review-triage.md`                                                                                                         | Stage 4                                                                     |
+| `review-triage.md` exists; accepted fixes not all pushed                                                                                                      | Stage 5                                                                     |
+| Fixes pushed; review comments still present                                                                                                                   | Stage 6                                                                     |
+| No review comments left and unmerged                                                                                                                          | Stage 7                                                                     |
+| PR merged; worktree, heartbeat or test database still present, or `AD-PENDING-n` or `lessons-pending.jsonl` still on `main` (a PR merged without its landing) | Stage 8                                                                     |
 
 State the detected stage, cycle and PR, then continue.
 

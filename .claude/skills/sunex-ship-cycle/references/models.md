@@ -2,11 +2,11 @@
 
 Prices and constraints below were checked on 2026-10-02 against the Claude API reference bundled with Claude Code. Re-check them when a new model ships; the rules that follow depend on the ratios, not on the exact numbers.
 
-| Model | Agent tool `model` | Input / output per MTok | Role in this pipeline |
-|---|---|---|---|
-| Claude Opus 5.5 | `opus` | $4 / $20 | Default for everything that reasons |
-| Claude Fable 5.1 | `fable` | $10 / $50 (2.5× Opus 5.5) | Upshift for the Verifier and triage |
-| Claude Haiku 4.5 | `haiku` | $1 / $5 | Mechanical chores dispatched as their own unit |
+| Model            | Agent tool `model` | Input / output per MTok   | Role in this pipeline                          |
+| ---------------- | ------------------ | ------------------------- | ---------------------------------------------- |
+| Claude Opus 5.5  | `opus`             | $4 / $20                  | Default for everything that reasons            |
+| Claude Fable 5.1 | `fable`            | $10 / $50 (2.5× Opus 5.5) | Upshift for the Verifier and triage            |
+| Claude Haiku 4.5 | `haiku`            | $1 / $5                   | Mechanical chores dispatched as their own unit |
 
 Sonnet is not part of this pipeline. The earlier project this process comes from measured that a Sonnet worker's output per task was large enough to erase the price gap for this kind of work; that measurement is not repeated for Sonnet 5.5, so it stays out until someone measures it on Sunex cycles.
 
@@ -29,13 +29,13 @@ Typical Haiku units: worktree setup and teardown, comment deletion (Stage 6), th
 
 Fable 5.1 is stronger at long autonomous work, at ambiguity, and at reading code for what it can do rather than what it currently does. That is exactly the Verifier's and the triager's job, and both are a small share of a cycle's tokens. It also takes noticeably longer per turn.
 
-| Unit | Model |
-|---|---|
-| Stage 1 Verifier | Fable 5.1 when the cycle touches domain rules, data invariants or migrations (most domain cycles); Opus 5.5 for scaffolding, tooling or docs-only cycles, and for cycles that are mainly authentication or security hardening |
-| Stage 4 triage | A fresh Fable 5.1 triager for findings from every lane except Security; the orchestrator (Opus 5.5) triages Security-lane findings itself |
-| Stage 1 phase workers | Opus 5.5. Fable only when the brief is goal-shaped (worker-briefs.md): a step-listed brief measurably lowers Fable's output quality, so it would underperform Opus at 2.5× the price |
-| pr-review lanes | Governed by pr-review: Opus, never Fable for Security |
-| Mechanical chores | Never Fable |
+| Unit                  | Model                                                                                                                                                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stage 1 Verifier      | Fable 5.1 when the cycle touches domain rules, data invariants or migrations (most domain cycles); Opus 5.5 for scaffolding, tooling or docs-only cycles, and for cycles that are mainly authentication or security hardening |
+| Stage 4 triage        | A fresh Fable 5.1 triager for findings from every lane except Security; the orchestrator (Opus 5.5) triages Security-lane findings itself                                                                                     |
+| Stage 1 phase workers | Opus 5.5. Fable only when the brief is goal-shaped (worker-briefs.md): a step-listed brief measurably lowers Fable's output quality, so it would underperform Opus at 2.5× the price                                          |
+| pr-review lanes       | Governed by pr-review: Opus, never Fable for Security                                                                                                                                                                         |
+| Mechanical chores     | Never Fable                                                                                                                                                                                                                   |
 
 Hard preconditions and fallbacks:
 
