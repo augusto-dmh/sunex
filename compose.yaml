@@ -1,12 +1,13 @@
 # Local services for development and tests. Start with `docker compose up -d`.
-# Postgres listens on host port 54329 so it does not clash with other projects.
+# Postgres listens on host port 54329 so it does not clash with other projects, and
+# only on loopback: the password is committed, and Docker's port rules bypass host firewalls.
 name: sunex
 
 services:
     pgsql:
         image: pgvector/pgvector:0.8.1-pg17
         ports:
-            - '${FORWARD_DB_PORT:-54329}:5432'
+            - '127.0.0.1:${FORWARD_DB_PORT:-54329}:5432'
         environment:
             POSTGRES_DB: '${DB_DATABASE:-sunex}'
             POSTGRES_USER: '${DB_USERNAME:-sunex}'
