@@ -32,9 +32,9 @@ dependency-table tests of row 02, so those rows below describe only what remains
 
 | # | Row | Scope | Depends on | Parallel-safe with | Size | Status |
 |---|---|---|---|---|---|---|
-| F1 | `docs-foundation` | README, ARCHITECTURE, brief, TDD-0001, ADR 0000–0014, this roadmap, STATE, AGENTS/CLAUDE through Boost guidelines, license and policies | — | F2, F3 | L | In review (PR #2) |
-| F2 | `quality-tooling` | Pint, Larastan level 9 (the scaffold's defects fixed, no baseline), Rector, Pest presets, one Composer script per gate (`lint`, `analyse`, `refactor-check`, `test`, `frontend-check`) plus `composer check`, one CI job per gate, the commit-message check in CI; also all of row 01 (PostgreSQL 17 + pgvector in `compose.yaml` on host port 54329, the `sunex_testing` database, the extensions migration and its test, Pest on PostgreSQL locally and in CI) and part of row 02 (the empty `app/Domain/*` contexts and arch tests for the ARCHITECTURE dependency table and the delivery-layer rule). The coverage gate moved to row 02 | — | F1, F3 | L | In review (PR #3) |
-| F3 | `delivery-harness` | Ship-cycle skills, PR template, the commit and PR metadata validator the skills run (the CI commit-message check is in F2) | — | F1, F2 | M | In review (PR #1) |
+| F1 | `docs-foundation` | README, ARCHITECTURE, brief, TDD-0001, ADR 0000–0014, this roadmap, STATE, AGENTS/CLAUDE through Boost guidelines, license and policies | — | F2, F3 | L | Done (PR #2) |
+| F2 | `quality-tooling` | Pint, Larastan level 9 (the scaffold's defects fixed, no baseline), Rector, Pest presets, one Composer script per gate (`lint`, `analyse`, `refactor-check`, `test`, `frontend-check`) plus `composer check`, one CI job per gate, the commit-message check in CI; also all of row 01 (PostgreSQL 17 + pgvector in `compose.yaml` on host port 54329, the `sunex_testing` database, the extensions migration and its test, Pest on PostgreSQL locally and in CI) and part of row 02 (the empty `app/Domain/*` contexts and arch tests for the ARCHITECTURE dependency table and the delivery-layer rule). The coverage gate moved to row 02 | — | F1, F3 | L | Done (PR #3) |
+| F3 | `delivery-harness` | Ship-cycle skills, PR template, the commit and PR metadata validator the skills run (the CI commit-message check is in F2) | — | F1, F2 | M | Done (PR #1) |
 
 ## v1 rows
 
