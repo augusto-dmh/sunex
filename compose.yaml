@@ -17,7 +17,8 @@ services:
             - pgsql-data:/var/lib/postgresql/data
             - ./scripts/postgres/create-testing-database.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh:ro
         healthcheck:
-            test: pg_isready -q -d "$$POSTGRES_DB" -U "$$POSTGRES_USER"
+            # Over TCP: the image's first-run init server listens only on the socket.
+            test: pg_isready -q -h 127.0.0.1 -d "$$POSTGRES_DB" -U "$$POSTGRES_USER"
             interval: 5s
             timeout: 5s
             retries: 10

@@ -121,7 +121,7 @@ jobs:
         ports:
           - 54329:5432
         options: >-
-          --health-cmd "pg_isready -q -d sunex_testing -U sunex"
+          --health-cmd "pg_isready -q -h 127.0.0.1 -d sunex_testing -U sunex"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
