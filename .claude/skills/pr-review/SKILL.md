@@ -42,7 +42,7 @@ For Laravel, Pest, Inertia or Vue facts, lanes use the Laravel Boost `search-doc
 ## Universal rules (every lane)
 
 1. Comment only on diff lines that start with `+` (not `+++`).
-2. Skip a finding when `{path, line}` within ±3 lines already has a comment; reply `[RESOLVED] This appears resolved by the recent changes.` to an existing comment whose issue the diff fixes.
+2. Skip a finding when `{path, line}` within ±3 lines already has a comment; reply `<!-- sunex-review:<lane> -->` followed by `[RESOLVED] This appears resolved by the recent changes.` to an existing comment whose issue the diff fixes.
 3. Post only findings you hold with at least 80% confidence, and only after reading enough surrounding code (not only the hunk) to know the finding is real.
 4. Name at least one thing the change does well.
 5. Explain why each finding matters and cite its ground: an ADR, a spec acceptance criterion, a Boost guideline, an architecture test, a Laravel doc page, a CLT article.
@@ -186,11 +186,13 @@ With no findings: "✅ No issues found across all review lanes." plus the table.
 
 ## Step 4: Teardown and re-run
 
-Everything this review creates is deletable, so a re-run never duplicates and the author can clear the PR after triage:
+Everything this review creates is deletable, so a re-run never duplicates and the author can clear the PR after triage. Delete only the review's own comments (the `<!-- sunex-review:` marker, posted by the account `gh` runs as); a contributor's, the owner's or a bot's comment on the same PR is never touched:
 
 ```bash
-for id in $(gh api repos/$REPO/pulls/<N>/comments --paginate --jq '.[].id'); do gh api -X DELETE repos/$REPO/pulls/comments/$id; done
-for id in $(gh api repos/$REPO/issues/<N>/comments --paginate --jq '.[].id'); do gh api -X DELETE repos/$REPO/issues/comments/$id; done
+me=$(gh api user --jq .login)
+sel=".[] | select(.user.login == \"$me\" and (.body | startswith(\"<!-- sunex-review:\"))) | .id"
+for id in $(gh api repos/$REPO/pulls/<N>/comments --paginate --jq "$sel"); do gh api -X DELETE repos/$REPO/pulls/comments/$id; done
+for id in $(gh api repos/$REPO/issues/<N>/comments --paginate --jq "$sel"); do gh api -X DELETE repos/$REPO/issues/comments/$id; done
 ```
 
 To resolve a thread after a fix instead of deleting it, reply and resolve through GraphQL (`addPullRequestReviewThreadReply`, then `resolveReviewThread`, thread IDs from `repository.pullRequest.reviewThreads`). Never create what cannot be removed: no `gh pr review`, no review submissions.

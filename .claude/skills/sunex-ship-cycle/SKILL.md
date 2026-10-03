@@ -93,7 +93,7 @@ Scope them: the affected Pest file or filter per task commit; the full set at ea
 | Review comments present; no `review-triage.md` | Stage 4 |
 | `review-triage.md` exists; accepted fixes not all pushed | Stage 5 |
 | Fixes pushed; review comments still present | Stage 6 |
-| PR comment-free and unmerged | Stage 7 |
+| No review comments left and unmerged | Stage 7 |
 | PR merged; worktree, heartbeat or test database still present | Stage 8 |
 
 State the detected stage, cycle and PR, then continue.
@@ -142,7 +142,16 @@ Apply every accepted finding as atomic commits through `sunex-finalize` rules. R
 
 ## Stage 6: Clean comments
 
-Invoking this skill is the owner's standing instruction to delete review comments after triage. Delete every inline comment (`gh api -X DELETE repos/{repo}/pulls/comments/{id}`) and every PR-level comment (`gh api -X DELETE repos/{repo}/issues/comments/{id}`), re-fetch both endpoints and confirm zero remain. A submitted review cannot be deleted: report it as a leftover instead of retrying.
+Invoking this skill is the owner's standing instruction to delete the review's comments after triage, and nothing else. A review comment is one whose body starts with `<!-- sunex-review:` and whose author is the account `gh` runs as:
+
+```bash
+me=$(gh api user --jq .login)
+sel=".[] | select(.user.login == \"$me\" and (.body | startswith(\"<!-- sunex-review:\"))) | .id"
+for id in $(gh api repos/{repo}/pulls/{N}/comments --paginate --jq "$sel"); do gh api -X DELETE repos/{repo}/pulls/comments/$id; done
+for id in $(gh api repos/{repo}/issues/{N}/comments --paginate --jq "$sel"); do gh api -X DELETE repos/{repo}/issues/comments/$id; done
+```
+
+Re-fetch both endpoints and confirm no review comment remains. Any other comment (a contributor's question, the owner's note, a bot) is never deleted: list it in the ship report, which makes the report dirty, so the cycle stops for the owner even in `auto`. A submitted review cannot be deleted: report it as a leftover instead of retrying.
 
 ## Stage 7: Land and merge
 
