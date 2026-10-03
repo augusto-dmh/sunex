@@ -11,8 +11,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels its superseded run. Pushes to main are
+# grouped by commit, so every merge commit keeps its own finished run (a shared
+# group would also drop a queued run when a third merge arrives).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
