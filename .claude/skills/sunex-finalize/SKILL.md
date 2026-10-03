@@ -42,7 +42,7 @@ A non-zero exit means stop and fix. Never work around a validator by rephrasing 
 
 1. `git status --short`, `git branch --show-current`, `git diff --stat`, then read the diff itself.
 2. Leave unrelated changes unstaged and mention them in the report. Never stash: other sessions share the stash stack. Never discard someone else's work.
-3. Confirm `git config user.email` is the owner's address before the first commit on a new machine or worktree.
+3. Before the first commit in a worktree, check the identity without asking: `git config user.email` must equal the author of the latest commit on `origin/main` that is not a bot's (`git log origin/main --no-merges --format=%ae | grep -v '\[bot\]' | head -1`). If they differ, stop as a credentials and access issue; the identity is published with every commit and the clean-room check scans it.
 
 ### 2. Choose metadata
 
