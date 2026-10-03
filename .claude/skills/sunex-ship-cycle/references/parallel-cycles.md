@@ -79,7 +79,8 @@ Always release the lock on the way out, including on failure (`heartbeat.py unlo
 
 | Situation | Action |
 |---|---|
-| Lock held (exit 3) | Park with heartbeat `waiting for merge lock`, poll `lock-status` about once a minute with a Monitor until-loop |
+| Lock held (exit 3) | Park with heartbeat `waiting for merge lock`; retry `heartbeat.py lock <slug>` about once a minute in a Monitor until-loop, leaving it on exit 4 (`lock-status` always exits 0 and cannot end the loop) |
+| Red CI or a refused merge after the landing commit | Reset to the commit before the landing and push it before releasing the lock, so the pending decision IDs come back and are numbered again from the next `main`; never release the lock with final numbers that are not on `main` |
 | Lock stale (exit 4) | Check the holder's heartbeat and PR; break it only when the holder is gone (`--break-stale`), and record it |
 | Driver session died mid-cycle | The coordinator (or the next session) sees a stale heartbeat, inspects the worktree, and adopts the cycle with `--cycle <slug>` |
 | Two cycles turn out to overlap after Design | The later one records the overlap in `context.md`, finishes its Design, and waits for the other to merge before Execute (rebase first) |
