@@ -8,7 +8,9 @@ use Illuminate\Support\ServiceProvider;
 | layout (models in App\Models, enums in App\Enums, ...), which domain contexts
 | deliberately break, so App\Domain is held to the rules in DomainBoundariesTest instead.
 | The strict preset is not used: it demands final classes and strict_types,
-| which the framework's own code and generators do not follow.
+| which the framework's own code and generators do not follow. Domain code is
+| written by hand and holds the CLT rules, where silent scalar coercion would
+| hide bugs, so it alone must declare strict types (TDD-0001, test strategy).
 */
 
 arch()->preset()->php();
@@ -16,6 +18,10 @@ arch()->preset()->php();
 arch()->preset()->security();
 
 arch()->preset()->laravel()->ignoring('App\Domain');
+
+arch('domain code declares strict types')
+    ->expect('App\Domain')
+    ->toUseStrictTypes();
 
 // ignoring() drops every Laravel preset rule for App\Domain, not only the two
 // layout rules it breaks (enums outside App\Enums, models outside App\Models).
