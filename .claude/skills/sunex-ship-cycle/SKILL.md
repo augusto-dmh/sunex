@@ -42,7 +42,7 @@ Everything else is decided, recorded and continued.
 Arguments, combinable: `[auto | hold | until <row>] [--parallel N] [--cycle <slug>]`.
 
 - `auto` (default): merge when the ship report is clean, then wrap. Clean means all of: Verifier PASS, every gate green on the final head, triage recorded with every accepted fix pushed, review comments deleted, CI green, clean-room check passed. Anything else stops with the report.
-- `hold`: run Stages 0 to 6, write the ship report, leave the PR open for the owner to merge.
+- `hold`: run Stages 0 to 6, write the ship report, leave the PR open. Record `mode: hold` in the Handoff of the cycle's `context.md`; a later resume keeps `hold` unless its invocation says `auto`. The hold report tells the owner to merge by resuming the cycle in `auto` (`/sunex-ship-cycle auto --cycle <slug>`), which runs the Stage 7 landing, not with GitHub's merge button, which would skip numbering the decisions and replaying the lessons.
 - `until <row>`: like `auto`, then start the next row; stop after the named row merges.
 - `--parallel N`: coordinator mode. Start up to N parallel-safe rows, each in its own worktree with its own driver session (see references/parallel-cycles.md). Without it, cycles run one at a time.
 - `--cycle <slug>`: drive exactly this cycle (how a coordinator starts a driver, and how a session resumes one).
@@ -82,7 +82,7 @@ Scope them: the affected Pest file or filter per task commit; the full set at ea
 
 ## Stage Detection (always first)
 
-1. `python3 $H/heartbeat.py show`. With `--cycle <slug>` or inside a cycle worktree, resume that cycle. A cycle with a fresh heartbeat belongs to another session: never drive it from here. A stale heartbeat (default two hours) whose worktree has no running session may be adopted; record the adoption in the cycle's `context.md`.
+1. `python3 $H/heartbeat.py show`. This session drives a cycle when it was started with `--cycle <slug>`, runs inside that cycle's worktree, or has that cycle's branch checked out; that is a resume even when the heartbeat is fresh. Any other cycle with a fresh heartbeat belongs to another session: never drive it from here. A stale heartbeat (default two hours) whose worktree has no running session may be adopted; record the adoption in the cycle's `context.md`.
 2. Determine the stage of the cycle being driven:
 
 | Observation | Resume at |
@@ -90,12 +90,14 @@ Scope them: the affected Pest file or filter per task commit; the full set at ea
 | No cycle in flight for this session | Stage 0 |
 | Cycle branch exists; tlc Execute or Verifier incomplete | Stage 1 |
 | `validation.md` says PASS; no open PR | Stage 2 |
+| `validation.md` says FAIL and the fix-loop count in `context.md` is three | Stop with the report |
 | PR open; no `<!-- sunex-review:` comments and no `review-triage.md` | Stage 3 |
-| Review comments present; no `review-triage.md` | Stage 4 |
+| Some `<!-- sunex-review:` comments but no `<!-- sunex-review:summary -->` comment; no `review-triage.md` | Stage 3, after deleting them (Stage 6 selector): the review was interrupted |
+| Review summary comment present; no `review-triage.md` | Stage 4 |
 | `review-triage.md` exists; accepted fixes not all pushed | Stage 5 |
 | Fixes pushed; review comments still present | Stage 6 |
 | No review comments left and unmerged | Stage 7 |
-| PR merged; worktree, heartbeat or test database still present | Stage 8 |
+| PR merged; worktree, heartbeat or test database still present, or `AD-PENDING-n` or `lessons-pending.jsonl` still on `main` (a PR merged without its landing) | Stage 8 |
 
 State the detected stage, cycle and PR, then continue.
 
@@ -104,7 +106,7 @@ State the detected stage, cycle and PR, then continue.
 1. Require a clean working tree. If dirty, stop and report: never stash (the stash stack is shared by all worktrees), never discard.
 2. `git fetch origin`; serial mode works on a branch cut from `origin/main` in the current checkout; coordinator mode creates worktrees (references/parallel-cycles.md).
 3. Read `.specs/project/ROADMAP.md`, the Decisions and Handoff of `.specs/project/STATE.md`, and the docs the next row maps to. The next cycle is the first row not started whose dependencies are merged and which no heartbeat claims. In `--parallel N`, take up to N such rows that ROADMAP marks parallel-safe and that pass the overlap check in references/parallel-cycles.md.
-4. Name each cycle: a kebab slug from the row, and a branch `<type>/<slug>` validated with `sunex-finalize`'s `validate_metadata.py --branch`.
+4. Name each cycle: a kebab slug from the row, and a branch `<type>/<slug>` validated with `sunex-finalize`'s `validate_metadata.py --branch`. Create the branch (or the worktree) right away: that is the claim, and `git` refuses to create a branch that exists. If `<type>/<slug>` already exists locally or on `origin`, the row is taken; pick the next eligible row.
 5. State the chosen row(s), slice and branch in one short paragraph and continue.
 
 ## Stage 1: Plan and build (tlc-spec-driven)
@@ -120,7 +122,7 @@ Invoke `tlc-spec-driven` for the cycle, with these Sunex overrides of its intera
 - **Commits:** every task commit follows `sunex-finalize` (Assisted-by trailer only, no internal IDs in messages). tlc's `check_commit.py` is weaker than `validate_metadata.py`; run the latter.
 - **Sunex correctness rules** that every task inherits: tests derive from the acceptance criteria; CLT and eSocial rules cite their primary source and are table-driven; authorization goes through the shared policy; sensitive fields never reach Inertia props unmasked; database constraints back every invariant the database can hold.
 
-Workers get goal-shaped briefs (references/worker-briefs.md). A Verifier FAIL enters tlc's bounded fix loop; still failing after three iterations, stop with the report.
+Workers get goal-shaped briefs (references/worker-briefs.md). A Verifier FAIL enters tlc's bounded fix loop; keep the iteration count in `context.md` so a resume cannot reset it, and when it is still failing after three iterations, stop with the report.
 
 ## Stage 2: Publish (sunex-finalize)
 
@@ -135,7 +137,7 @@ Spawn one subagent (Agent tool, `general-purpose`, `model: "opus"`) whose prompt
 1. Fetch every comment: `gh api repos/{repo}/pulls/{N}/comments --paginate` and `gh api repos/{repo}/issues/{N}/comments --paginate`.
 2. For each finding decide, against the code as it exists: real or false; if real, fix or won't-fix, and why. Reject findings that misread the code, contradict a recorded decision, or trade against recorded scope, with the reason. Use the Laravel Boost `search-docs` tool when a finding turns on framework behaviour.
 3. Who triages is in references/models.md (a fresh triager for most findings; this session for security-lane findings).
-4. Persist `.specs/features/<slug>/review-triage.md` before changing anything: one row per finding with lane, `file:line`, verdict, action and rationale. The comments are deleted in Stage 6; this file is the surviving record.
+4. Persist `.specs/features/<slug>/review-triage.md` before changing anything: one row per finding with lane, `file:line`, verdict, action and rationale. Commit it (`docs: record the review triage of <plain-language cycle name>`) and push it before Stage 5. The comments are deleted in Stage 6, and this file is the surviving record, so it must exist on the remote branch first.
 
 ## Stage 5: Fix
 
@@ -143,7 +145,7 @@ Apply every accepted finding as atomic commits through `sunex-finalize` rules. R
 
 ## Stage 6: Clean comments
 
-Invoking this skill is the owner's standing instruction to delete the review's comments after triage, and nothing else. A review comment is one whose body starts with `<!-- sunex-review:` and whose author is the account `gh` runs as:
+First confirm the triage record is on the remote branch (`git ls-tree origin/<branch> -- .specs/features/<slug>/review-triage.md` prints it); if not, push it before deleting anything. Invoking this skill is the owner's standing instruction to delete the review's comments after triage, and nothing else. A review comment is one whose body starts with `<!-- sunex-review:` and whose author is the account `gh` runs as:
 
 ```bash
 me=$(gh api user --jq .login)
@@ -175,7 +177,7 @@ Landing, the same in serial and parallel mode (the lock costs nothing when alone
 ## Stage 8: Wrap
 
 1. From the main checkout: `git checkout main && git pull`. Remove the cycle's worktree (`git worktree remove .worktrees/<slug>`), delete the local branch, drop the cycle's test database, and `python3 $H/heartbeat.py clear <slug>`.
-2. Confirm the merged ROADMAP row shows the cycle done and STATE.md has its decisions; fix on a tiny follow-up PR only if missing.
+2. Confirm the merged ROADMAP row shows the cycle done and STATE.md has its decisions. If `main` still holds this cycle's `AD-PENDING-n` or `lessons-pending.jsonl` (a PR merged without its landing), land them on a follow-up branch through Stage 7 steps 1 to 7, under the lock; fix a missing ROADMAP mark the same way.
 3. Report, in order: the cycle closed and PR merged; the next roadmap row and its scope in one line; a model recommendation for that row with a one-line reason (references/models.md); per-subagent token use if known, noting that `/cost` is the billed authority.
 
 In `until <row>` mode, go back to Stage 0 unless the named row just merged. In `auto` mode, stop after the wrap report.
