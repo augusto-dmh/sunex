@@ -80,20 +80,28 @@ git commit -F /path/to/msg.txt
 
 1. `git fetch origin` and run `python3 $S/clean_room.py --base origin/main`. Fix every FAIL by rewriting the text (amend or fixup the offending commit before the branch is pushed; after it is pushed, a new commit is not enough, because the old text stays in history, so rewrite the branch with `--force-with-lease`, never on `main`).
 2. `gh auth status`; push with `git push -u origin <branch>`.
-3. Draft the body in a scratch file using the `## ` sections of `.github/pull_request_template.md`, in order: Description, Context, Architecture, Main changes, Decisions, Tests, Configuration, Dependencies, Impact, How to validate, Checklist, AI assistance. Write "None." where nothing applies. Paragraphs are single unwrapped lines: GitHub renders hard wraps literally.
+3. Draft the body in `$G/sunex-pr-draft.md`, where `G=$(git rev-parse --absolute-git-dir)` is this worktree's own git directory: private to the cycle, never committed, and not shared with parallel cycles the way a fixed `/tmp` name would be. Use the `## ` sections of `.github/pull_request_template.md`, in order: Description, Context, Architecture, Main changes, Decisions, Tests, Configuration, Dependencies, Impact, How to validate, Checklist, AI assistance. Write "None." where nothing applies. Paragraphs are single unwrapped lines: GitHub renders hard wraps literally.
    - **Context** links public sources (Laravel docs, planalto.gov.br for CLT articles, eSocial manuals), never private notes.
    - **Decisions** lists each choice made while building: the options, why yes and why not for each, and the pick. Plain words, no decision IDs.
    - **Tests** names what the new tests assert and lists each gate command with its result.
    - **AI assistance** says what the assistant wrote (code, tests, docs, this description) and what a human reviewed, ran or changed. Be specific; do not overstate human review that did not happen.
-4. Check it, then scan the rendered body for the clean room too:
+4. Check it, then scan the rendered body and the title for the clean room too. Publish exactly the file that was scanned:
 
 ```bash
-python3 $S/render_pr_body.py --draft /tmp/pr-draft.md --output /tmp/pr-body.md
-python3 $S/clean_room.py --base origin/main --file /tmp/pr-body.md
-gh pr create --base main --head <branch> --title '<title>' --body-file /tmp/pr-body.md
+G=$(git rev-parse --absolute-git-dir)
+python3 $S/render_pr_body.py --draft $G/sunex-pr-draft.md --output $G/sunex-pr-body.md
+python3 $S/clean_room.py --base origin/main --file $G/sunex-pr-body.md --text '<title>'
+gh pr create --base main --head <branch> --title '<title>' --body-file $G/sunex-pr-body.md
 ```
 
-5. When the PR exists already, update it with `gh pr edit <N> --title ... --body-file ...`. Create drafts only when asked.
+5. When the PR exists already, run the same render and scan, then update it through the REST API (`gh pr edit` currently fails on a GitHub GraphQL deprecation):
+
+```bash
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+gh api -X PATCH repos/$REPO/pulls/<N> -F body=@$G/sunex-pr-body.md -f title='<title>'
+```
+
+   Create drafts only when asked.
 
 ## Report
 
